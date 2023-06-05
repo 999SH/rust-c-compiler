@@ -1,6 +1,8 @@
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
+
+    EOF,
     // Keywords
     Int,
     Char,
@@ -14,6 +16,10 @@ pub enum TokenType {
     //Case,
     //Struct,
     //Union,
+
+    Newline,
+    Tab,
+    EscapeChar(char),
 
     // Identifiers
     Identifier(String),
@@ -91,7 +97,7 @@ impl<'a> Lexer<'a> {
 
             //Keywords
             'a'..='z' | 'A'..='Z' | '_' => {
-                let identifier = self.get_keyword();
+                let identifier:String = self.get_keyword();
                 match identifier.as_str() {
                     "int" => TokenType::Int,
                     "if" => TokenType::If,
@@ -100,6 +106,20 @@ impl<'a> Lexer<'a> {
                     _ => TokenType::Identifier(identifier),
                 }
             }
+            //Numbers
+            '0'..='9' => {
+                let int:i64 = self.get_int();
+                TokenType::IntConst(int)
+            }
+            //Newline
+            '\n' => {
+                self.cur_line += 1;
+                TokenType::StringLiteral("\n".to_string())
+            },
+
+            //End of file
+            '\0' => TokenType::EOF,
+
             _ => todo!("we need to implement this...."),
         };
         self.read_char();
@@ -114,15 +134,15 @@ impl<'a> Lexer<'a> {
         };
         self.pos += 1;
     }
-    fn peek_char(self) -> char {
-        if self.pos >= self.input.len() {
+    fn peek_char(&self) -> char {
+        if self.pos+1 >= self.input.len() {
             '\0'
         } else {
-            self.input.chars().nth(self.pos).unwrap()
+            self.input.chars().nth(self.pos+1).unwrap()
         }
     }
     fn skip_whitespace(&mut self) {
-        while self.ch.is_ascii_whitespace() {
+        while self.ch == ' ' || self.ch == '\t' {
             self.read_char();
         }
     }
@@ -131,6 +151,13 @@ impl<'a> Lexer<'a> {
         while self.ch.is_ascii_alphabetic() || self.ch == '_' {
             self.read_char();
         }
-        self.input[start..self.pos].to_string()
+        self.input[start..self.pos-1].to_string()
+    }
+    fn get_int(&mut self) -> i64 {
+        let start: usize = self.pos -1;
+        while self.ch.is_ascii_alphanumeric() || self.ch == '_' {
+            self.read_char();
+        }
+        self.input[start..self.pos-1].parse().expect("Failed to parse integer")
     }
 }

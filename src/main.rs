@@ -1,7 +1,8 @@
 mod lexer;
-use crate::lexer::Lexer;
+use crate::lexer::{Lexer, TokenType};
 use std::env;
 use std::fs;
+use crate::TokenType::EOF;
 
 fn main() {
     if env::args().nth(1).is_some() {
@@ -11,10 +12,15 @@ fn main() {
         let mut lexer = Lexer::new(&content);
         loop {
             let token = lexer.next_token();
+            if token == Option::from(EOF) {
+                println!("{:?}", EOF);
+                break
+            }
             match token {
                 Some(token) => println!("{:?}", token),
                 None => break,
             }
+
         }
     } else {
         println!("Error when reading file! / Compiled without file")
