@@ -1,4 +1,6 @@
 mod lexer;
+mod parser;
+
 use crate::lexer::{Lexer, TokenType};
 use std::env;
 use std::fs;
@@ -20,7 +22,6 @@ fn main() {
                 Some(token) => println!("{:?}", token),
                 None => break,
             }
-
         }
     } else {
         println!("Error when reading file! / Compiled without file")
