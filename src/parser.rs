@@ -13,10 +13,8 @@ pub enum Expr {
 pub enum Statement {
     Expr(Expr),
     Return(Expr),
-    Declaration(String, Expr),
-    Function(String, Vec<(String, String)>, Box<Statement>),
-    FunctionDeclaration(String, Vec<String>, Vec<Statement>),
-    VariableDecWithInit(String, String, Expr),
+    FunctionDeclaration(String, Vec<Parameter>, Vec<Statement>),
+    VariableDeclaration(String, String, Option<Expr>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -29,6 +27,7 @@ pub enum Op {
     Plus,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Parameter {
     name: String,
     typ: String,
@@ -142,16 +141,17 @@ impl<'a> Parser<'a> {
                 self.next_token();
                 match &self.cur_token {
                     Some(TokenType::Identifier(id)) => {
+                        let str_id = id.to_string();
                         self.next_token();
                         match &self.cur_token {
                             Some(TokenType::OpenParen) => {
                                 //Add function handling
                                 let parameters = self.parse_parameters();
                                 let body = self.parse_function_body();
-                                Statement::FunctionDeclaration(id.clone(), parameters, body)
+                                Statement::FunctionDeclaration(str_id, parameters, body)
                             }
                             Some(TokenType::Semicolon) => {
-
+                                Statement::VariableDeclaration(str_id, "int".to_string(), None)
                                 //Init variable with no value
                             }
                             Some(TokenType::Equal) => {
@@ -160,10 +160,10 @@ impl<'a> Parser<'a> {
                                 match &self.cur_token {
                                     Some(TokenType::Semicolon) => {
                                         self.next_token();
-                                        Statement::VariableDecWithInit(
+                                        Statement::VariableDeclaration(
                                             "int".to_string(),
-                                            id.clone(),
-                                            initializer,
+                                            str_id,
+                                            Some(initializer),
                                         )
                                     }
                                     _ => panic!("Expected semicolon after variable declaration"),
