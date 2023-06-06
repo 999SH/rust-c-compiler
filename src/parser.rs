@@ -168,7 +168,6 @@ impl<'a> Parser<'a> {
                                     }
                                     _ => panic!("Expected semicolon after variable declaration"),
                                 }
-                                //Assign value when initing variable
                             }
                             _ => panic!("Unexpected token after identifier"),
                         }
