@@ -4,6 +4,6 @@ int adder(int a, int b){
 }
 
 int main() {
-  adder(3,4); 
+  int d = adder(3,4); 
   return 0;
 }

@@ -23,7 +23,7 @@ pub enum TokenType {
     Identifier(String),
     // Constants / Literals
     IntConst(i64),
-    //FloatConst(f64),
+    FloatConst(f64),
     CharConst(char),
     StringLiteral(String),
 
