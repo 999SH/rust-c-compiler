@@ -1,3 +1,9 @@
+int adder(int a, int b){
+  int c = a + b;
+  return c;
+}
+
 int main() {
-   return 0;
+  adder(3,4); 
+  return 0;
 }
