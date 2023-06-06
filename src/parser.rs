@@ -97,21 +97,43 @@ impl<'a> Parser<'a> {
                 Some(TokenType::CloseParen) => {
                     self.next_token();
                     break;
-                },
+                }
                 Some(TokenType::Int) => {
                     self.next_token();
-
                     match &self.cur_token {
                         Some(TokenType::Identifier(id)) => {
-                            parameters.push(Parameter {name: id.clone(), typ: "int".to_string()});
-                        },
-                        _ => panic!("Expected identifier")
+                            parameters.push(Parameter {
+                                name: id.clone(),
+                                typ: "int".to_string(),
+                            });
+                        }
+                        _ => panic!("Expected identifier"),
                     }
-                },
-                Some(TokenType::String)
-                _ => panic!("Unexpected function type")
+                }
+                _ => panic!("Unexpected function type"),
             }
         }
+        parameters
+    }
+
+    fn parse_function_body(&mut self) -> Vec<Statement> {
+        let mut statements = Vec::new();
+
+        self.next_token();
+
+        while let Some(token) = &self.cur_token {
+            match token {
+                TokenType::CloseBrace => {
+                    self.next_token();
+                    break;
+                }
+                _ => {
+                    let statement = self.parse_statement();
+                    statements.push(statement);
+                }
+            }
+        }
+        statements
     }
 
     pub fn parse_statement(&mut self) -> Statement {
@@ -127,8 +149,9 @@ impl<'a> Parser<'a> {
                                 let parameters = self.parse_parameters();
                                 let body = self.parse_function_body();
                                 Statement::FunctionDeclaration(id.clone(), parameters, body)
-                            },
+                            }
                             Some(TokenType::Semicolon) => {
+
                                 //Init variable with no value
                             }
                             Some(TokenType::Equal) => {
@@ -137,7 +160,7 @@ impl<'a> Parser<'a> {
                                 match &self.cur_token {
                                     Some(TokenType::Semicolon) => {
                                         self.next_token();
-                                            Statement::VariableDecWithInit(
+                                        Statement::VariableDecWithInit(
                                             "int".to_string(),
                                             id.clone(),
                                             initializer,
