@@ -11,7 +11,7 @@ pub enum Expr {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
-    Expr(Expr),
+    Expression(Expr),
     Return(Expr),
     FunctionDeclaration(String, Vec<Parameter>, Vec<Statement>),
     VariableDeclaration(String, String, Option<Expr>),
@@ -67,25 +67,62 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_expr(&mut self) -> Expr {
-        match &self.cur_token {
+        let expr = match &self.cur_token {
             Some(TokenType::IntConst(int)) => {
                 let int_value = *int;
                 self.next_token();
-                let expr = Expr::Int(int_value);
-
-                match &self.cur_token {
-                    Some(TokenType::Plus) => {
-                        self.next_token();
-                        let right = self.parse_expr();
-                        Expr::BinOp(Box::new(expr), Op::Plus, Box::new(right))
-                    }
-                    _ => expr,
-                }
+                Expr::Int(int_value)
             }
-            _ => panic!("Need to add this expression or Unknown expression"),
+            Some(TokenType::Identifier(id)) => {
+                let var_id = id.to_string();
+                self.next_token();
+                match &self.cur_token {
+                    Some(TokenType::OpenParen) => {
+                        self.next_token();
+                        let args = self.parse_args();
+                        match &self.cur_token {
+                            Some(TokenType::CloseParen) => {
+                                self.next_token();
+                            }
+                            _ => panic!("Expected closing parenthesis after function call arguments")
+                        }
+                        Expr::FunctionCall(var_id, args)
+                    }
+                    _=>  Expr::Variable(var_id)
+                }
+
+            }
+            _ => panic!("Need to add this expression {:?}", self.cur_token),
+        };
+
+        match &self.cur_token {
+            Some(TokenType::Plus) => {
+                self.next_token();
+                let right = self.parse_expr();
+                Expr::BinOp(Box::new(expr), Op::Plus, Box::new(right))
+            }
+            _ => expr,
         }
     }
+    fn parse_args(&mut self) -> Vec<Expr> {
+        let mut args = Vec::new();
 
+        loop {
+            match &self.cur_token {
+                Some(TokenType::CloseParen) => {
+                    break;
+                }
+                Some(TokenType::Comma) => {
+                    self.next_token();
+                }
+                _ => {
+                    let arg = self.parse_expr();
+                    args.push(arg);
+                }
+            }
+        }
+        args
+    }
     fn parse_parameters(&mut self) -> Vec<Parameter> {
         let mut parameters = Vec::new();
 
@@ -102,14 +139,17 @@ impl<'a> Parser<'a> {
                     match &self.cur_token {
                         Some(TokenType::Identifier(id)) => {
                             parameters.push(Parameter {
-                                name: id.clone(),
+                                name: id.to_string(),
                                 typ: "int".to_string(),
                             });
                         }
-                        _ => panic!("Expected identifier"),
+                        _ => panic!("Expected identifier, Cur token: {:?}", self.cur_token),
                     }
                 }
-                _ => panic!("Unexpected function type"),
+                Some(TokenType::Comma) => {
+                    //Do nothing
+                }
+                _ => panic!("Unexpected function type {:?}", self.cur_token),
             }
         }
         parameters
@@ -175,9 +215,20 @@ impl<'a> Parser<'a> {
                     _ => panic!("Unsure what error is"),
                 }
             }
+            Some(TokenType::Return) => {
+                self.next_token();
+                let expr = self.parse_expr();
+                match &self.cur_token {
+                    Some(TokenType::Semicolon) => {
+                        self.next_token();
+                        Statement::Return(expr)
+                    }
+                    _ => panic!("Expected semicolon after return statement")
+                }
+            }
             _ => {
                 let expr = self.parse_expr();
-                Statement::Expr(expr)
+                Statement::Expression(expr)
             }
         }
     }

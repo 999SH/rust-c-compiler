@@ -76,7 +76,7 @@ impl<'a> Lexer<'a> {
         let mut lexer = Lexer {
             input,
             pos: 0,
-            cur_line: 0,
+            cur_line: 1,
             ch: '\0',
         };
         lexer.read_char();
@@ -84,6 +84,11 @@ impl<'a> Lexer<'a> {
     }
     pub fn next_token(&mut self) -> Option<TokenType> {
         self.skip_whitespace();
+        while self.ch == '\n' {
+            self.cur_line += 1;
+            self.read_char();
+            self.skip_whitespace();
+        }
         let token = match self.ch {
             ';' => TokenType::Semicolon,
             ',' => TokenType::Comma,
@@ -98,6 +103,7 @@ impl<'a> Lexer<'a> {
             '-' => TokenType::Minus,
             '*' => TokenType::Star,
             '/' => TokenType::Slash,
+            '=' => TokenType::Equal,
 
             //Keywords
             'a'..='z' | 'A'..='Z' | '_' => {
@@ -116,33 +122,30 @@ impl<'a> Lexer<'a> {
                 TokenType::IntConst(int)
             }
             //Newline
-            '\n' => {
-                self.cur_line += 1;
-                TokenType::StringLiteral("\n".to_string())
-            }
+
 
             //End of file
             '\0' => TokenType::EOF,
 
-            _ => todo!("we need to implement this...."),
+            _ => todo!("need to implement this...."),
         };
         self.read_char();
         Some(token)
     }
 
     fn read_char(&mut self) {
-        self.ch = if self.pos >= self.input.len() {
-            '\0'
+        if self.pos >= self.input.len() {
+            self.ch = '\0'
         } else {
-            self.input.chars().nth(self.pos).unwrap()
+            self.ch = self.input.chars().nth(self.pos).unwrap()
         };
         self.pos += 1;
     }
     fn peek_char(&self) -> char {
-        if self.pos + 1 >= self.input.len() {
+        if self.pos >= self.input.len() {
             '\0'
         } else {
-            self.input.chars().nth(self.pos + 1).unwrap()
+            self.input.chars().nth(self.pos).unwrap()
         }
     }
     fn skip_whitespace(&mut self) {
@@ -152,17 +155,17 @@ impl<'a> Lexer<'a> {
     }
     fn get_keyword(&mut self) -> String {
         let start: usize = self.pos - 1;
-        while self.ch.is_ascii_alphabetic() || self.ch == '_' {
+        while self.peek_char().is_ascii_alphabetic() || self.peek_char() == '_' {
             self.read_char();
         }
-        self.input[start..self.pos - 1].to_string()
+        self.input[start..self.pos].to_string()
     }
     fn get_int(&mut self) -> i64 {
         let start: usize = self.pos - 1;
-        while self.ch.is_ascii_alphanumeric() || self.ch == '_' {
+        while self.peek_char().is_ascii_digit() || self.peek_char() == '_' {
             self.read_char();
         }
-        self.input[start..self.pos - 1]
+        self.input[start..self.pos]
             .parse()
             .expect("Failed to parse integer")
     }
