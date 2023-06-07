@@ -96,8 +96,8 @@ impl<'a> Lexer<'a> {
             '}' => TokenType::CloseBrace,
             '(' => TokenType::OpenParen,
             ')' => TokenType::CloseParen,
-            '[' => TokenType::OpenBrace,
-            ']' => TokenType::CloseBrace,
+            '[' => TokenType::OpenBracket,
+            ']' => TokenType::CloseBracket,
 
             '+' => TokenType::Plus,
             '-' => TokenType::Minus,
@@ -168,5 +168,64 @@ impl<'a> Lexer<'a> {
         self.input[start..self.pos]
             .parse()
             .expect("Failed to parse integer")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lexer_correctly_tokenizes_keywords() {
+        let input = "int if else return";
+        let mut lexer = Lexer::new(input);
+
+        assert_eq!(lexer.next_token(), Some(TokenType::Int));
+        assert_eq!(lexer.next_token(), Some(TokenType::If));
+        assert_eq!(lexer.next_token(), Some(TokenType::Else));
+        assert_eq!(lexer.next_token(), Some(TokenType::Return));
+    }
+
+    #[test]
+    fn lexer_correctly_tokenizes_identifiers() {
+        let input = "foo bar baz";
+        let mut lexer = Lexer::new(input);
+
+        assert_eq!(lexer.next_token(), Some(TokenType::Identifier("foo".to_string())));
+        assert_eq!(lexer.next_token(), Some(TokenType::Identifier("bar".to_string())));
+        assert_eq!(lexer.next_token(), Some(TokenType::Identifier("baz".to_string())));
+    }
+
+    #[test]
+    fn lexer_correctly_tokenizes_operators() {
+        let input = "+ - * / =";
+        let mut lexer = Lexer::new(input);
+
+        assert_eq!(lexer.next_token(), Some(TokenType::Plus));
+        assert_eq!(lexer.next_token(), Some(TokenType::Minus));
+        assert_eq!(lexer.next_token(), Some(TokenType::Star));
+        assert_eq!(lexer.next_token(), Some(TokenType::Slash));
+        assert_eq!(lexer.next_token(), Some(TokenType::Equal));
+    }
+
+    #[test]
+    fn lexer_correctly_tokenizes_integer_constants() {
+        let input = "123 456 789";
+        let mut lexer = Lexer::new(input);
+
+        assert_eq!(lexer.next_token(), Some(TokenType::IntConst(123)));
+        assert_eq!(lexer.next_token(), Some(TokenType::IntConst(456)));
+        assert_eq!(lexer.next_token(), Some(TokenType::IntConst(789)));
+    }
+
+    #[test]
+    fn lexer_correctly_handles_whitespace() {
+        let input = "  foo   bar\tbaz\nqux";
+        let mut lexer = Lexer::new(input);
+
+        assert_eq!(lexer.next_token(), Some(TokenType::Identifier("foo".to_string())));
+        assert_eq!(lexer.next_token(), Some(TokenType::Identifier("bar".to_string())));
+        assert_eq!(lexer.next_token(), Some(TokenType::Identifier("baz".to_string())));
+        assert_eq!(lexer.next_token(), Some(TokenType::Identifier("qux".to_string())));
     }
 }

@@ -90,7 +90,6 @@ impl<'a> Parser<'a> {
                     }
                     _=>  Expr::Variable(var_id)
                 }
-
             }
             _ => panic!("Need to add this expression {:?}", self.cur_token),
         };
@@ -233,3 +232,69 @@ impl<'a> Parser<'a> {
         }
     }
 }
+
+// Stolen function for printing tree
+fn print_expr(expr: &Expr, indent: usize) {
+    let indent_str = " ".repeat(indent);
+
+    match expr {
+        Expr::Int(value) => println!("{}Int: {}", indent_str, value),
+        Expr::Variable(name) => println!("{}Variable: {}", indent_str, name),
+        Expr::FunctionCall(name, args) => {
+            println!("{}FunctionCall: {}", indent_str, name);
+            for arg in args {
+                print_expr(arg, indent + 2);
+            }
+        }
+        Expr::BinOp(left, op, right) => {
+            println!("{}BinOp: {:?}", indent_str, op);
+            print_expr(&*left, indent + 2);
+            print_expr(&*right, indent + 2);
+        }
+    }
+}
+
+// Add this function to print parameters
+fn print_parameter(param: &Parameter, indent: usize) {
+    let indent_str = " ".repeat(indent);
+    println!("{}Parameter: {} {}", indent_str, param.typ, param.name);
+}
+
+// Add this function to print statements
+fn print_statement(stmt: &Statement, indent: usize) {
+    let indent_str = " ".repeat(indent);
+
+    match stmt {
+        Statement::Expression(expr) => {
+            println!("{}Expr:", indent_str);
+            print_expr(expr, indent + 2);
+        }
+        Statement::Return(expr) => {
+            println!("{}Return:", indent_str);
+            print_expr(expr, indent + 2);
+        }
+        Statement::FunctionDeclaration(name, params, body) => {
+            println!("{}FunctionDeclaration: {}", indent_str, name);
+            for param in params {
+                print_parameter(param, indent + 2);
+            }
+            for stmt in body {
+                print_statement(stmt, indent + 2);
+            }
+        }
+        Statement::VariableDeclaration(typ, name, initializer) => {
+            println!("{}VariableDeclaration: {} {}", indent_str, typ, name);
+            if let Some(expr) = initializer {
+                print_expr(expr, indent + 2);
+            }
+        }
+    }
+}
+
+// Add this function to print a program
+pub fn print_program(program: &Program) {
+    for stmt in &program.statements {
+        print_statement(stmt, 0);
+    }
+}
+
