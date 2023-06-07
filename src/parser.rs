@@ -29,8 +29,8 @@ pub enum Op {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Parameter {
-    name: String,
-    typ: String,
+    pub name: String,
+    pub typ: String,
 }
 
 pub struct Parser<'a> {
@@ -84,11 +84,13 @@ impl<'a> Parser<'a> {
                             Some(TokenType::CloseParen) => {
                                 self.next_token();
                             }
-                            _ => panic!("Expected closing parenthesis after function call arguments")
+                            _ => {
+                                panic!("Expected closing parenthesis after function call arguments")
+                            }
                         }
                         Expr::FunctionCall(var_id, args)
                     }
-                    _=>  Expr::Variable(var_id)
+                    _ => Expr::Variable(var_id),
                 }
             }
             _ => panic!("Need to add this expression {:?}", self.cur_token),
@@ -145,9 +147,7 @@ impl<'a> Parser<'a> {
                         _ => panic!("Expected identifier, Cur token: {:?}", self.cur_token),
                     }
                 }
-                Some(TokenType::Comma) => {
-                    //Do nothing
-                }
+                Some(TokenType::Comma) => {}
                 _ => panic!("Unexpected function type {:?}", self.cur_token),
             }
         }
@@ -222,7 +222,7 @@ impl<'a> Parser<'a> {
                         self.next_token();
                         Statement::Return(expr)
                     }
-                    _ => panic!("Expected semicolon after return statement")
+                    _ => panic!("Expected semicolon after return statement"),
                 }
             }
             _ => {
@@ -297,4 +297,3 @@ pub fn print_program(program: &Program) {
         print_statement(stmt, 0);
     }
 }
-
