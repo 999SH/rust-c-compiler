@@ -7,6 +7,7 @@ pub enum Expr {
     BinOp(Box<Expr>, Op, Box<Expr>),
     Variable(String),
     FunctionCall(String, Vec<Expr>),
+    Negation(Box<Expr>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -25,6 +26,7 @@ pub struct Program {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Op {
     Plus,
+    Minus,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -93,6 +95,11 @@ impl<'a> Parser<'a> {
                     _ => Expr::Variable(var_id),
                 }
             }
+            Some(TokenType::Minus) => {
+                self.next_token();
+                let expr = Box::new(self.parse_expr());
+                Expr::Negation(expr)
+            }
             _ => panic!("Need to add this expression {:?}", self.cur_token),
         };
 
@@ -101,6 +108,11 @@ impl<'a> Parser<'a> {
                 self.next_token();
                 let right = self.parse_expr();
                 Expr::BinOp(Box::new(expr), Op::Plus, Box::new(right))
+            }
+            Some(TokenType::Minus) => {
+                self.next_token();
+                let right = self.parse_expr();
+                Expr::BinOp(Box::new(expr), Op::Minus, Box::new(right))
             }
             _ => expr,
         }
@@ -246,6 +258,7 @@ fn print_expr(expr: &Expr, indent: usize) {
                 print_expr(arg, indent + 2);
             }
         }
+        Expr::Negation(boxed) => println!("{}Negated: {:?}", indent_str, boxed),
         Expr::BinOp(left, op, right) => {
             println!("{}BinOp: {:?}", indent_str, op);
             print_expr(&*left, indent + 2);
@@ -295,5 +308,50 @@ fn print_statement(stmt: &Statement, indent: usize) {
 pub fn print_program(program: &Program) {
     for stmt in &program.statements {
         print_statement(stmt, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_int() {
+        let lexer = Lexer::new("123");
+        let mut parser = Parser::new(lexer);
+        let expr = parser.parse_expr();
+        assert_eq!(expr, Expr::Int(123));
+    }
+
+    #[test]
+    fn test_parse_variable() {
+        let lexer = Lexer::new("foo");
+        let mut parser = Parser::new(lexer);
+        let expr = parser.parse_expr();
+        assert_eq!(expr, Expr::Variable("foo".to_string()));
+    }
+
+    #[test]
+    fn test_parse_function_call() {
+        let lexer = Lexer::new("bar(123, foo)");
+        let mut parser = Parser::new(lexer);
+        let expr = parser.parse_expr();
+        assert_eq!(
+            expr,
+            Expr::FunctionCall(
+                "bar".to_string(),
+                vec![Expr::Int(123), Expr::Variable("foo".to_string())]
+            )
+        );
+    }
+    #[test]
+    fn test_parse_unary_operation() {
+        let lexer = Lexer::new("-foo");
+        let mut parser = Parser::new(lexer);
+        let expr = parser.parse_expr();
+        assert_eq!(
+            expr,
+            Expr::Negation(Box::new(Expr::Variable("foo".to_string())))
+        );
     }
 }
