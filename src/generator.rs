@@ -17,8 +17,8 @@ impl CodeGenerator {
     }
     pub fn generate(&mut self, program: &Program) -> &str {
         self.code += ".intel_syntax noprefix\n";
-        self.code += ".global _start\n";
-        self.code += "_start:\n";
+        self.code += ".global main\n";
+        self.code += "main:\n";
 
         if let Some(Statement::FunctionDeclaration(name, _, _)) = program.statements.first() {
             self.code += &format!("call {}_entry\n", name)

@@ -30,15 +30,15 @@ fn main() {
     if env::args().nth(1).is_some() {
         let file: String = env::args().nth(1).unwrap();
         let content: String = fs::read_to_string(file).unwrap();
-        lexer_check(content.clone());
+        //lexer_check(content.clone());
         let lexer = Lexer::new(&content);
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
         let mut code_generator = CodeGenerator::new();
         let assembly = code_generator.generate(&program);
-        println!("{:?}", program);
-        print_program(&program);
-        println!("{}", assembly);
+        //println!("{:?}", program);
+        //print_program(&program);
+        //println!("{}", assembly);
         let file_name = "testcode/output.s";
         fs::write(file_name, assembly).expect("Unable to write to file");
     } else {
