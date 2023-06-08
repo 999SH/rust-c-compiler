@@ -32,6 +32,7 @@ pub enum TokenType {
     Minus,        // "-" X
     Star,         // "*" X
     Slash,        // "/" X
+    SlashSlash,   // "//" X
     Percent,      // "%" X
     Equal,        // "=" X
     Less,         // "<" X
@@ -62,6 +63,12 @@ pub enum TokenType {
     CloseParen,   // ")"
     OpenBracket,  // "["
     CloseBracket, // "]"
+    Hashtag,      // "#"
+    Dot,          // "."
+    Quote,        // """
+    SingleQuote,  // "'"
+    Colon,        // ":"
+    ForwardSlash  // "\"
 }
 
 pub struct Lexer<'a> {
@@ -84,14 +91,47 @@ impl<'a> Lexer<'a> {
     }
     pub fn next_token(&mut self) -> Option<TokenType> {
         self.skip_whitespace();
-        while self.ch == '\n' {
-            self.cur_line += 1;
-            self.read_char();
-            self.skip_whitespace();
+        while self.ch == '/' || self.ch == '\n' {
+            match self.ch {
+                '\n' => {
+                    self.cur_line += 1;
+                    self.read_char();
+                    self.skip_whitespace();
+                }
+                '/' => {
+                    //Comment
+                    self.read_char();
+                    match self.ch {
+                        '/' => {
+                            while self.ch != '\n' && self.ch != '\0' {
+                                self.read_char();
+                            }
+                        }
+                        '*' => loop {
+                            while self.ch != '*' && self.ch != '\0' {
+                                self.read_char();
+                            }
+                            if self.ch == '\0' {
+                                break;
+                            }
+                            self.read_char();
+                            if self.ch == '/' {
+                                self.read_char();
+                                break;
+                            }
+                        },
+                        _ => {}
+                    }
+                },
+                /* Multi line comment */
+                _ => {}
+            }
         }
+        self.skip_whitespace();
         let token = match self.ch {
             ';' => TokenType::Semicolon,
             ',' => TokenType::Comma,
+            '.' => TokenType::Dot,
             '{' => TokenType::OpenBrace,
             '}' => TokenType::CloseBrace,
             '(' => TokenType::OpenParen,
@@ -102,7 +142,10 @@ impl<'a> Lexer<'a> {
             '+' => TokenType::Plus,
             '-' => TokenType::Minus,
             '*' => TokenType::Star,
-            '/' => TokenType::Slash,
+            '/' => match self.peek_char() {
+                //'=' => TokenType::SlashSlash,
+                _ => TokenType::Slash,
+            },
             '=' => match self.peek_char() {
                 '=' => {
                     self.read_char();
@@ -160,15 +203,25 @@ impl<'a> Lexer<'a> {
                 let int: i64 = self.get_int();
                 TokenType::IntConst(int)
             }
-            //Newline
+
+            '#' => TokenType::Hashtag,
+            '"' => TokenType::Quote,
+            '\'' => TokenType::SingleQuote,
+            ':' => TokenType::Colon,
+            '\\' => TokenType::ForwardSlash,
+            '~' => TokenType::Tilde,
 
             //End of file
             '\0' => TokenType::EOF,
 
-            _ => todo!("need to implement this...."),
+            _ => todo!("need to implement this..{:?}", self.ch),
         };
         self.read_char();
         Some(token)
+    }
+
+    pub fn get_line(&self) -> i32 {
+        self.cur_line as i32
     }
 
     fn read_char(&mut self) {
