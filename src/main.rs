@@ -39,6 +39,8 @@ fn main() {
         println!("{:?}", program);
         print_program(&program);
         println!("{}", assembly);
+        let file_name = "testcode/output.s";
+        fs::write(file_name, assembly).expect("Unable to write to file");
     } else {
         println!("Error when reading file! / Compiled without file")
     }

@@ -8,6 +8,10 @@ pub enum Expr {
     Variable(String),
     FunctionCall(String, Vec<Expr>),
     Negation(Box<Expr>),
+    Not(Box<Expr>),
+    BitNOT(Box<Expr>),
+    Dereference(Box<Expr>),
+    Address(Box<Expr>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -27,6 +31,11 @@ pub struct Program {
 pub enum Op {
     Plus,
     Minus,
+    Multiplication,
+    Division,
+    BitOR,
+    BitAND,
+    BitXOR,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -69,11 +78,32 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_expr(&mut self) -> Expr {
-        let expr = match &self.cur_token {
-            Some(TokenType::IntConst(int)) => {
-                let int_value = *int;
+        let mut expr = self.parse_unary_expr();
+
+        while let Some(op) = self.get_binary_op() {
+            self.next_token();
+            let right = self.parse_unary_expr();
+            expr = Expr::BinOp(Box::new(expr), op, Box::new(right))
+        }
+
+        expr
+    }
+    fn parse_unary_expr(&mut self) -> Expr {
+        match &self.cur_token {
+            //Open paren means a prioritzed expression
+            Some(TokenType::OpenParen) => {
                 self.next_token();
-                Expr::Int(int_value)
+                let expr = self.parse_expr();
+                match &self.cur_token {
+                    Some(TokenType::CloseParen) => self.next_token(),
+                    _ => panic!("Expected closing parthesis for expression"),
+                }
+                expr
+            }
+            Some(TokenType::IntConst(int)) => {
+                let dint = *int;
+                self.next_token();
+                Expr::Int(dint)
             }
             Some(TokenType::Identifier(id)) => {
                 let var_id = id.to_string();
@@ -95,28 +125,53 @@ impl<'a> Parser<'a> {
                     _ => Expr::Variable(var_id),
                 }
             }
+            //Tokentype minus in this context means negative, not the operation
             Some(TokenType::Minus) => {
                 self.next_token();
                 let expr = Box::new(self.parse_expr());
                 Expr::Negation(expr)
             }
+            //Logical not
+            Some(TokenType::Not) => {
+                self.next_token();
+                let expr = Box::new(self.parse_expr());
+                Expr::Not(expr)
+            }
+            //Unary bitwise NOT
+            Some(TokenType::Tilde) => {
+                self.next_token();
+                let expr = Box::new(self.parse_expr());
+                Expr::BitNOT(expr)
+            }
+            //Dereference
+            Some(TokenType::Star) => {
+                self.next_token();
+                let expr = Box::new(self.parse_expr());
+                Expr::Dereference(expr)
+            }
+            //Adress
+            Some(TokenType::Ampersand) => {
+                self.next_token();
+                let expr = Box::new(self.parse_expr());
+                Expr::Address(expr)
+            }
             _ => panic!("Need to add this expression {:?}", self.cur_token),
-        };
-
-        match &self.cur_token {
-            Some(TokenType::Plus) => {
-                self.next_token();
-                let right = self.parse_expr();
-                Expr::BinOp(Box::new(expr), Op::Plus, Box::new(right))
-            }
-            Some(TokenType::Minus) => {
-                self.next_token();
-                let right = self.parse_expr();
-                Expr::BinOp(Box::new(expr), Op::Minus, Box::new(right))
-            }
-            _ => expr,
         }
     }
+
+    fn get_binary_op(&self) -> Option<Op> {
+        match &self.cur_token {
+            Some(TokenType::Plus) => Some(Op::Plus),
+            Some(TokenType::Minus) => Some(Op::Minus),
+            Some(TokenType::Star) => Some(Op::Multiplication),
+            Some(TokenType::Slash) => Some(Op::Division),
+            Some(TokenType::Ampersand) => Some(Op::BitAND),
+            Some(TokenType::Or) => Some(Op::BitOR),
+            Some(TokenType::Xor) => Some(Op::BitXOR),
+            _ => None,
+        }
+    }
+
     fn parse_args(&mut self) -> Vec<Expr> {
         let mut args = Vec::new();
 
@@ -259,11 +314,13 @@ fn print_expr(expr: &Expr, indent: usize) {
             }
         }
         Expr::Negation(boxed) => println!("{}Negated: {:?}", indent_str, boxed),
+        Expr::Not(boxed) => println!("{}Not: {:?}", indent_str, boxed),
         Expr::BinOp(left, op, right) => {
             println!("{}BinOp: {:?}", indent_str, op);
             print_expr(&*left, indent + 2);
             print_expr(&*right, indent + 2);
         }
+        _ => todo!("Fix non-exhaustive pattern for printing"),
     }
 }
 
@@ -353,6 +410,17 @@ mod tests {
             expr,
             Expr::Negation(Box::new(Expr::Variable("foo".to_string())))
         );
+    }
+    #[test]
+    fn test_parse_not_operation() {
+        let input = r#"
+            !foo
+        "#;
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+
+        let expr = parser.parse_expr();
+        assert_eq!(expr, Expr::Not(Box::new(Expr::Variable("foo".to_string()))));
     }
     #[test]
     fn test_parse_program() {

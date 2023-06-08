@@ -134,7 +134,7 @@ impl<'a> Lexer<'a> {
             //'<<' => TokenType::ShiftLeft,
             '&' => TokenType::Ampersand,
             '|' => TokenType::Or,
-
+            '^' => TokenType::Xor,
             //Keywords
             'a'..='z' | 'A'..='Z' | '_' => {
                 let identifier: String = self.get_keyword();
