@@ -1,6 +1,7 @@
 mod generator;
 mod lexer;
 mod parser;
+mod preprocessor;
 
 use crate::generator::CodeGenerator;
 use crate::lexer::{Lexer, TokenType};
@@ -10,6 +11,8 @@ use std::env;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::collections::HashSet;
+
 #[allow(dead_code)]
 fn lexer_check(content: String) {
     let mut lexer = Lexer::new(&content);
@@ -28,53 +31,20 @@ fn lexer_check(content: String) {
     }
 }
 
-fn preprocess(file: &Path, include_path: &[&Path]) -> String {
-    let mut content = String::new();
-    fs::File::open(file)
-        .expect("Could not open file")
-        .read_to_string(&mut content)
-        .expect("Could not read file");
-
-    let mut result = String::new();
-    let lines = content.lines();
-
-    for line in lines {
-        if line.starts_with("#include \"") {
-            let include_file_name = line.split('"').nth(1).expect("No file specified");
-
-            let mut search_paths = vec![file.parent().unwrap()];
-            search_paths.extend_from_slice(include_path);
-
-            let include_file_path = find_file(include_file_name, &search_paths);
-            let include_file_content = preprocess(&include_file_path, include_path);
-            result.push_str(&include_file_content);
-        } else if line.starts_with("#include <") {
-            let include_file_name = line.split('<').nth(1).unwrap().split('>').nth(0).unwrap();
-            let include_file_path = find_file(include_file_name, &[Path::new("/usr/include"), Path::new("/usr/include/linux"), Path::new("/usr/include/c++/13.1.1/tr1"), Path::new("./c++/13.1.1/bits")]);
-            let include_file_content = preprocess(&include_file_path, include_path);
-            result.push_str(&include_file_content);
-        } else {
-            result.push_str(line);
-            result.push('\n');
-        }
-    }
-
-    result
-}
-
-fn find_file(file_name: &str, paths: &[&Path]) -> PathBuf {
-    for path in paths {
-        let file_path = path.join(file_name);
-        if file_path.exists() {
-            return file_path;
-        }
-    }
-    panic!("File not found: {}", file_name);
-}
 
 fn main() {
     if let Some(file_name) = env::args().nth(1) {
-        let preprocessed_content = preprocess(&Path::new(&file_name), &[Path::new("/usr/include")]);
+        let file_path = Path::new(&file_name);
+        let include_path = vec![
+            Path::new("/usr/include"),
+            Path::new("/usr/include/linux"),
+            Path::new("/usr/include/c++/13.1.1"),
+            Path::new("/usr/include/c++/13.1.1/bits"),
+            Path::new("/usr/include/c++/13.1.1/tr1"),
+            Path::new("/usr/include/c++/13.1.1/x86_64-pc-linux-gnu")
+        ];
+        let mut processed_files = HashSet::new();
+        let preprocessed_content = preprocessor::preprocess(&file_path, &include_path, &mut processed_files);
 
         let lexer = Lexer::new(&preprocessed_content);
         lexer_check(preprocessed_content.clone());

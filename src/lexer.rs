@@ -68,7 +68,8 @@ pub enum TokenType {
     Quote,        // """
     SingleQuote,  // "'"
     Colon,        // ":"
-    ForwardSlash  // "\"
+    ForwardSlash, // "\"
+    QuestionMark, // "?"
 }
 
 pub struct Lexer<'a> {
@@ -210,6 +211,7 @@ impl<'a> Lexer<'a> {
             ':' => TokenType::Colon,
             '\\' => TokenType::ForwardSlash,
             '~' => TokenType::Tilde,
+            '?' => TokenType::QuestionMark,
 
             //End of file
             '\0' => TokenType::EOF,
@@ -257,6 +259,7 @@ impl<'a> Lexer<'a> {
             self.read_char();
         }
         self.input[start..self.pos]
+            .replace("_", "") // remove underscores
             .parse()
             .expect("Failed to parse integer")
     }
