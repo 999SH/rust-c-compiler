@@ -24,7 +24,19 @@ impl CodeGenerator {
                 self.code += "push rbp\n";
                 self.code += "mov rbp, rsp\n";
 
-                for parameter in parameters {}
+                for (i, _parameter) in parameters.iter().enumerate() {
+                    // This example assumes that there are enough registers and uses them in order: rdi, rsi, rdx, rcx, r8, r9.
+                    let register = match i {
+                        0 => "rdi",
+                        1 => "rsi",
+                        2 => "rdx",
+                        3 => "rcx",
+                        4 => "r8",
+                        5 => "r9",
+                        _ => panic!("Too many parameters for right now"),
+                    };
+                    self.code += &format!("mov [rbp-{}], {}\n", (i + 1) * 8, register);
+                }
 
                 for statement in body {
                     self.visit_statement(statement);

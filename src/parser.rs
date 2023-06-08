@@ -354,4 +354,72 @@ mod tests {
             Expr::Negation(Box::new(Expr::Variable("foo".to_string())))
         );
     }
+    #[test]
+    fn test_parse_program() {
+        let input = r#"
+            int adder(int a, int b) {
+                int c = a + b;
+                return c + 5;
+            }
+            int main() {
+                int d = adder(3, 4);
+                return 0;
+            }
+        "#;
+
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse();
+
+        assert_eq!(
+            program.statements,
+            vec![
+                Statement::FunctionDeclaration(
+                    "adder".to_string(),
+                    vec![
+                        Parameter {
+                            name: "a".to_string(),
+                            typ: "int".to_string()
+                        },
+                        Parameter {
+                            name: "b".to_string(),
+                            typ: "int".to_string()
+                        }
+                    ],
+                    vec![
+                        Statement::VariableDeclaration(
+                            "int".to_string(),
+                            "c".to_string(),
+                            Some(Expr::BinOp(
+                                Box::new(Expr::Variable("a".to_string())),
+                                Op::Plus,
+                                Box::new(Expr::Variable("b".to_string()))
+                            ))
+                        ),
+                        Statement::Return(Expr::BinOp(
+                            Box::new(Expr::Variable("c".to_string())),
+                            Op::Plus,
+                            Box::new(Expr::Int(5))
+                        ))
+                    ]
+                ),
+                Statement::FunctionDeclaration(
+                    "main".to_string(),
+                    vec![],
+                    vec![
+                        Statement::VariableDeclaration(
+                            "int".to_string(),
+                            "d".to_string(),
+                            Some(Expr::FunctionCall(
+                                "adder".to_string(),
+                                vec![Expr::Int(3), Expr::Int(4)]
+                            ))
+                        ),
+                        Statement::Return(Expr::Int(0))
+                    ]
+                ),
+            ]
+        );
+    }
 }
