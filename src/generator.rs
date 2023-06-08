@@ -16,6 +16,17 @@ impl CodeGenerator {
         }
     }
     pub fn generate(&mut self, program: &Program) -> &str {
+        self.code += ".intel_syntax noprefix\n";
+        self.code += ".global _start\n";
+        self.code += "_start:\n";
+
+        if let Some(Statement::FunctionDeclaration(name, _, _)) = program.statements.first() {
+            self.code += &format!("call {}_entry\n", name)
+        }
+        self.code += "mov eax, 0x60\n";
+        self.code += "xor edi, edi\n";
+        self.code += "syscall\n";
+
         for statement in &program.statements {
             self.visit_statement(statement);
         }
@@ -129,7 +140,7 @@ impl CodeGenerator {
                 self.code += "pop rcx\n";
 
                 match op {
-                    Op::Plus => self.code += "add rax, ecx\n",
+                    Op::Plus => self.code += "add rax, rcx\n",
                     Op::Minus => self.code += "sub rax, rcx\n",
                     Op::Multiplication => self.code += "imul rax, rcx\n",
                     //Op::Division => self.code += "idiv rcx\n",

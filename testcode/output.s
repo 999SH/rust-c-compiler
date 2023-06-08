@@ -1,3 +1,10 @@
+.intel_syntax noprefix
+.global _start
+_start:
+call adder_entry
+mov eax, 0x60
+xor edi, edi
+syscall
 adder_entry:
 push rbp
 mov rbp, rsp
@@ -7,7 +14,7 @@ mov rax, [-24]
 push rax
 mov rax, 5
 pop rcx
-add rax, ecx
+add rax, rcx
 mov rsp, rbp
 pop rbp
 ret
