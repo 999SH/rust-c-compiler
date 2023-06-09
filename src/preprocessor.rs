@@ -3,7 +3,25 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-pub fn preprocess(file: &Path, include_path: &[&Path], processed_files: &mut HashSet<PathBuf>) -> String {
+/*
+ * Include this to use preprocessor
+ * let include_path = vec![
+            Path::new("/usr/include"),
+            Path::new("/usr/include/linux"),
+            Path::new("/usr/include/c++/13.1.1"),
+            Path::new("/usr/include/c++/13.1.1/bits"),
+            Path::new("/usr/include/c++/13.1.1/tr1"),
+            Path::new("/usr/include/c++/13.1.1/x86_64-pc-linux-gnu")
+        ];
+        let mut processed_files = HashSet::new();
+        let preprocessed_content = preprocessor::preprocess(&file_path, &include_path, &mut processed_files);
+*/
+
+pub fn preprocess(
+    file: &Path,
+    include_path: &[&Path],
+    processed_files: &mut HashSet<PathBuf>,
+) -> String {
     if processed_files.contains(file) {
         return String::new(); // return empty string if file already processed
     }
@@ -67,7 +85,8 @@ pub fn preprocess(file: &Path, include_path: &[&Path], processed_files: &mut Has
                     skip = condition_value == 0;
                 }
             }
-        } else if !trimmed_line.starts_with("#") && !skip { // skip other preprocessor directives
+        } else if !trimmed_line.starts_with("#") && !skip {
+            // skip other preprocessor directives
             let mut processed_line = trimmed_line.to_string();
             for (name, value) in &definitions {
                 // Replace defined names with their values
@@ -80,13 +99,19 @@ pub fn preprocess(file: &Path, include_path: &[&Path], processed_files: &mut Has
                 let mut search_paths = vec![file.parent().unwrap()];
                 search_paths.extend_from_slice(include_path);
                 let include_file_path = find_file(include_file_name, &search_paths);
-                let include_file_content = preprocess(&include_file_path, include_path, processed_files);
+                let include_file_content =
+                    preprocess(&include_file_path, include_path, processed_files);
                 result.push_str(&include_file_content);
             }
         } else if trimmed_line.starts_with("#include <") {
-            if let Some(include_file_name) = trimmed_line.split('<').nth(1).and_then(|s| s.split('>').next()) {
+            if let Some(include_file_name) = trimmed_line
+                .split('<')
+                .nth(1)
+                .and_then(|s| s.split('>').next())
+            {
                 let include_file_path = find_file(include_file_name, include_path); // use include_path directly
-                let include_file_content = preprocess(&include_file_path, include_path, processed_files);
+                let include_file_content =
+                    preprocess(&include_file_path, include_path, processed_files);
                 result.push_str(&include_file_content);
             }
         } else {
