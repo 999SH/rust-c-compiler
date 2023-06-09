@@ -7,11 +7,11 @@ use crate::generator::CodeGenerator;
 use crate::lexer::{Lexer, TokenType};
 use crate::parser::{print_program, Parser};
 use crate::TokenType::EOF;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::collections::HashSet;
 
 #[allow(dead_code)]
 fn lexer_check(content: String) {
@@ -31,21 +31,9 @@ fn lexer_check(content: String) {
     }
 }
 
-
 fn main() {
-    if let Some(file_name) = env::args().nth(1) {
-        let file_path = Path::new(&file_name);
-        let include_path = vec![
-            Path::new("/usr/include"),
-            Path::new("/usr/include/linux"),
-            Path::new("/usr/include/c++/13.1.1"),
-            Path::new("/usr/include/c++/13.1.1/bits"),
-            Path::new("/usr/include/c++/13.1.1/tr1"),
-            Path::new("/usr/include/c++/13.1.1/x86_64-pc-linux-gnu")
-        ];
-        let mut processed_files = HashSet::new();
-        let preprocessed_content = preprocessor::preprocess(&file_path, &include_path, &mut processed_files);
-
+    if let Some(file) = env::args().nth(1) {
+        let preprocessed_content: String = fs::read_to_string(file).unwrap();
         let lexer = Lexer::new(&preprocessed_content);
         lexer_check(preprocessed_content.clone());
 
