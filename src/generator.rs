@@ -225,7 +225,8 @@ mod tests {
         let asm = generator.generate(&program);
         assert_eq!(
             asm,
-            "test_entry:\npush rbp\nmov rbp, rsp\nmov rax, 42\nmov rsp, rbp\npop rbp\nret\n"
+            ".intel_syntax noprefix\n.global main\nmain:\ncall test_entry\nmov eax, 0x60\nxor edi, edi\nsyscall\n\
+            test_entry:\npush rbp\nmov rbp, rsp\nmov rax, 42\nmov rsp, rbp\npop rbp\nret\n"
         );
     }
 }

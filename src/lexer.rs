@@ -70,6 +70,7 @@ pub enum TokenType {
     Colon,        // ":"
     ForwardSlash, // "\"
     QuestionMark, // "?"
+    SlashEquals,  // "/="
 }
 
 pub struct Lexer<'a> {
@@ -93,6 +94,9 @@ impl<'a> Lexer<'a> {
     pub fn next_token(&mut self) -> Option<TokenType> {
         self.skip_whitespace();
         while self.ch == '/' || self.ch == '\n' {
+            if self.peek_char() != '/' && self.peek_char() != '*' && self.ch != '\n'{
+                break;
+            }
             match self.ch {
                 '\n' => {
                     self.cur_line += 1;
@@ -123,7 +127,7 @@ impl<'a> Lexer<'a> {
                         },
                         _ => {}
                     }
-                },
+                }
                 /* Multi line comment */
                 _ => {}
             }
@@ -144,7 +148,10 @@ impl<'a> Lexer<'a> {
             '-' => TokenType::Minus,
             '*' => TokenType::Star,
             '/' => match self.peek_char() {
-                //'=' => TokenType::SlashSlash,
+                '=' => {
+                    self.read_char();
+                    TokenType::SlashEquals
+                }
                 _ => TokenType::Slash,
             },
             '=' => match self.peek_char() {
@@ -222,10 +229,6 @@ impl<'a> Lexer<'a> {
         Some(token)
     }
 
-    pub fn get_line(&self) -> i32 {
-        self.cur_line as i32
-    }
-
     fn read_char(&mut self) {
         if self.pos >= self.input.len() {
             self.ch = '\0'
@@ -234,6 +237,7 @@ impl<'a> Lexer<'a> {
         };
         self.pos += 1;
     }
+
     fn peek_char(&self) -> char {
         if self.pos >= self.input.len() {
             '\0'
