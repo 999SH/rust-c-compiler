@@ -26,6 +26,7 @@ pub enum TokenType {
     //FloatConst(f64),
     CharConst(char),
     StringLiteral(String),
+    LineDirective(i64, String),
 
     // Operators
     Plus,         // "+" X
@@ -212,7 +213,17 @@ impl<'a> Lexer<'a> {
                 TokenType::IntConst(int)
             }
 
-            '#' => TokenType::Hashtag,
+            '#' => {
+                self.read_char();
+                if self.ch.is_numeric() {
+                    let line_number = self.get_int();
+                    let file_name = self.get_string();
+                    TokenType::LineDirective(line_number, file_name)
+                }
+                else {
+                    TokenType::Hashtag
+                }
+            },
             '"' => TokenType::Quote,
             '\'' => TokenType::SingleQuote,
             ':' => TokenType::Colon,
@@ -266,6 +277,24 @@ impl<'a> Lexer<'a> {
             .replace("_", "") // remove underscores
             .parse()
             .expect("Failed to parse integer")
+    }
+    fn get_string(&mut self) -> String {
+        let mut result = String::new();
+        if self.ch != '"' {
+            return result;
+        }
+        loop {
+            self.read_char(); // Advance to the next character
+            if self.ch == '"' || self.ch == '\0' {
+                break; // We've reached the end of the string
+            }
+            result.push(self.ch);
+        }
+        // Advance past the closing quote
+        if self.ch == '"' {
+            self.read_char();
+        }
+        result
     }
 }
 
