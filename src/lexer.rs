@@ -4,6 +4,14 @@ pub enum TokenType {
     EOF,
     // Keywords
     Int,
+    Long,
+    Double,
+    Unsigned,
+    Typedef,
+    Short,
+    Const,
+    Extern,
+    Restrict,
     Char,
     If,
     Else,
@@ -26,7 +34,7 @@ pub enum TokenType {
     //FloatConst(f64),
     CharConst(char),
     StringLiteral(String),
-    LineDirective(i64, String),
+    LineDirective(i64, String, Vec<i64>),
 
     // Operators
     Plus,         // "+" X
@@ -193,16 +201,24 @@ impl<'a> Lexer<'a> {
                 match identifier.as_str() {
                     "void" => TokenType::Void,
                     "int" => TokenType::Int,
+                    "long" => TokenType::Long,
+                    "double" => TokenType::Double,
+                    "unsigned" => TokenType::Unsigned,
+                    "const" => TokenType::Const,
+                    "short" => TokenType::Short,
+                    "extern" => TokenType::Extern,
+                    "restrict" => TokenType::Restrict,
+                    "typedef" => TokenType::Typedef,
                     "char" => TokenType::Char,
                     "if" => TokenType::If,
                     "return" => TokenType::Return,
                     "else" => TokenType::Else,
                     "while" => TokenType::While,
                     "for" => TokenType::For,
-                    "Switch" => TokenType::Switch,
-                    "Case" => TokenType::Case,
-                    "Struct" => TokenType::Struct,
-                    "Union" => TokenType::Union,
+                    "switch" => TokenType::Switch,
+                    "case" => TokenType::Case,
+                    "struct" => TokenType::Struct,
+                    "union" => TokenType::Union,
 
                     _ => TokenType::Identifier(identifier),
                 }
@@ -217,9 +233,16 @@ impl<'a> Lexer<'a> {
                 self.read_char();
                 if self.ch.is_numeric() {
                     let line_number = self.get_int();
-                    let file_name = self.get_string();
-                    TokenType::LineDirective(line_number, file_name)
-                }
+                    let file_name = match self.ch {
+                        '\"' => Some(self.get_string()),
+                        _ => None,
+                    };
+                    let mut extra_numbers = Vec::new();
+                    while self.ch.is_numeric(){
+                        extra_numbers.push(self.get_int())
+                    }
+                    TokenType::LineDirective(line_number, file_name.unwrap(), extra_numbers)
+                } //.expect("Expected valid filepath")
                 else {
                     TokenType::Hashtag
                 }

@@ -5,7 +5,7 @@ mod preprocessor;
 
 use crate::generator::CodeGenerator;
 use crate::lexer::{Lexer, TokenType};
-use crate::parser::{print_program, Parser};
+use crate::parser::{Parser};
 use crate::TokenType::EOF;
 use std::collections::HashSet;
 use std::env;

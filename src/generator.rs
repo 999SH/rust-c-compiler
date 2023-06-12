@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 #[allow(unused_imports)]
-use crate::parser::{Expr, Op, Parameter, Program, Statement};
+use crate::parser::{Expr, Op, Parameter, Program};
+use crate::parser::{Declaration, Instruction, Statement};
+use crate::parser::Declaration::FunctionDeclaration;
 
 pub struct CodeGenerator {
     code: String,
@@ -20,15 +22,23 @@ impl CodeGenerator {
         self.code += ".global main\n";
         self.code += "main:\n";
 
-        if let Some(Statement::FunctionDeclaration(name, _, _)) = program.statements.first() {
+        if let Some(Instruction::Declaration(FunctionDeclaration(_, name, _, _))) = program.contains.first() {
             self.code += &format!("call {}_entry\n", name)
         }
         self.code += "mov eax, 0x60\n";
         self.code += "xor edi, edi\n";
         self.code += "syscall\n";
 
-        for statement in &program.statements {
-            self.visit_statement(statement);
+
+        for instruction in &program.contains {
+            match instruction {
+                Instruction::Declaration(declaration) => {
+                    self.visit_declaration(declaration)
+                },
+                Instruction::Statement(statement) => {
+                    self.visit_statement(statement);
+                },
+            }
         }
         &self.code
     }
@@ -54,7 +64,22 @@ impl CodeGenerator {
 
     fn visit_statement(&mut self, statement: &Statement) {
         match statement {
-            Statement::FunctionDeclaration(name, parameters, body) => {
+            Statement::Return(expr) => {
+                self.visit_expr(expr);
+            }
+            Statement::Expression(expr) => match expr {
+                Expr::FunctionCall(name, args) => {
+                    self.visit_function_call(name, args);
+                }
+                _ => self.visit_expr(expr),
+            },
+            _ => (),
+        }
+    }
+
+    fn visit_declaration(&mut self, declaration: &Declaration) {
+        match declaration {
+            Declaration::FunctionDeclaration(number_type, name, parameters, body) => {
                 self.code += &format!("{}_entry:\n", name);
                 self.code += "push rbp\n";
                 self.code += "mov rbp, rsp\n";
@@ -76,24 +101,22 @@ impl CodeGenerator {
                     self.code += &format!("mov [rbp-{}], {}\n", (i + 1) * 8, register);
                 }
 
-                for statement in body {
-                    self.visit_statement(statement);
+                for instruction in body {
+                    match instruction {
+                        Instruction::Declaration(declaration) => {
+                            self.visit_declaration(declaration)
+                        },
+                        Instruction::Statement(statement) => {
+                            self.visit_statement(statement);
+                        },
+                    }
                 }
 
                 self.code += "mov rsp, rbp\n";
                 self.code += "pop rbp\n";
                 self.code += "ret\n";
             }
-            Statement::Return(expr) => {
-                self.visit_expr(expr);
-            }
-            Statement::Expression(expr) => match expr {
-                Expr::FunctionCall(name, args) => {
-                    self.visit_function_call(name, args);
-                }
-                _ => self.visit_expr(expr),
-            },
-            _ => (),
+            _ => {}
         }
     }
 
@@ -157,27 +180,30 @@ impl CodeGenerator {
 
 #[cfg(test)]
 mod tests {
+    use crate::parser::Declaration::VariableDeclaration;
+    use crate::parser::Statement::Return;
     use super::*;
 
     #[test]
     fn test_generator_contains() {
         let mut codegen = CodeGenerator::new();
         let program = Program {
-            statements: vec![
-                Statement::FunctionDeclaration(
+            contains: vec![
+                Instruction::Declaration(FunctionDeclaration(
+                    "int".to_string(),
                     "adder".to_string(),
                     vec![
                         Parameter {
                             name: "a".to_string(),
-                            typ: "int".to_string(),
+                            paramtype: "int".to_string(),
                         },
                         Parameter {
                             name: "b".to_string(),
-                            typ: "int".to_string(),
+                            paramtype: "int".to_string(),
                         },
                     ],
                     vec![
-                        Statement::VariableDeclaration(
+                        Instruction::Declaration(Declaration::VariableDeclaration(
                             "int".to_string(),
                             "c".to_string(),
                             Some(Expr::BinOp(
@@ -185,29 +211,30 @@ mod tests {
                                 Op::Plus,
                                 Box::new(Expr::Variable("b".to_string())),
                             )),
-                        ),
-                        Statement::Return(Expr::BinOp(
+                        )),
+                        Instruction::Statement(Return(Expr::BinOp(
                             Box::new(Expr::Variable("c".to_string())),
                             Op::Plus,
                             Box::new(Expr::Int(5)),
-                        )),
+                        ))),
                     ],
-                ),
-                Statement::FunctionDeclaration(
+                )),
+                Instruction::Declaration(FunctionDeclaration(
+                    "int".to_string(),
                     "main".to_string(),
                     vec![],
                     vec![
-                        Statement::VariableDeclaration(
+                        Instruction::Declaration(VariableDeclaration(
                             "int".to_string(),
                             "d".to_string(),
                             Some(Expr::FunctionCall(
                                 "adder".to_string(),
                                 vec![Expr::Int(3), Expr::Int(4)],
                             )),
-                        ),
-                        Statement::Return(Expr::Int(0)),
+                        )),
+                        Instruction::Statement(Return(Expr::Int(0))),
                     ],
-                ),
+                )),
             ],
         };
         let asm = codegen.generate(&program);
@@ -246,11 +273,12 @@ ret
     #[test]
     fn test_assembly_return() {
         let program = Program {
-            statements: vec![Statement::FunctionDeclaration(
+            contains: vec![Instruction::Declaration(FunctionDeclaration(
+                "int".to_string(),
                 "test".to_string(),
                 vec![],
-                vec![Statement::Return(Expr::Int(42))],
-            )],
+                vec![Instruction::Statement(Return(Expr::Int(42)))],
+            ))],
         };
         let mut generator = CodeGenerator::new();
         let asm = generator.generate(&program);
