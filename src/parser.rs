@@ -1,7 +1,19 @@
 use std::char::DecodeUtf16Error;
 use crate::lexer::TokenType;
 use crate::Lexer;
-use crate::parser::Declaration::TypeDefDeclaration;
+use crate::parser::Declaration::{StructDeclaration, TypeDefDeclaration};
+use crate::parser::TypeDefType::{Basic, Struct};
+
+macro_rules! expect_token {
+    ($self:expr, $expected_token:expr) => {
+        match &$self.cur_token {
+            Some(token) if *token == $expected_token => {
+                $self.next_token();
+            },
+            _ => panic!("Expected {:?}, found {:?}", $expected_token, $self.cur_token),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
@@ -24,23 +36,24 @@ pub enum Statement {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StructVariable {
-    pub name: String,
-    pub vartype: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub enum Declaration {
     VariableDeclaration(String, String, Option<Expr>),
     FunctionDeclaration(String, String, Vec<Parameter>, Vec<Instruction>),
-    TypeDefDeclaration(String, TypeDefType),
-    StructDeclaration(Option<String>, Vec<Instruction>, Option<String>)
+    TypeDefDeclaration(TypeDefType),
+    StructDeclaration(Option<String>, Vec<Instruction>,Option<String>)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct StructStruct {
+    pub name: Option<String>,
+    pub body: Vec<Instruction>,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeDefType {
-    Basic(String),
-    Struct(String),
+    Basic(String, String),
+    Struct(Option<String>, Vec<Instruction>,Option<String>),
     Union(String),
 }
 
@@ -128,6 +141,31 @@ impl<'a> Parser<'a> {
             Some(TokenType::Double) => Some("double".to_string()),
             Some(TokenType::Long) => Some("long".to_string()),
             Some(TokenType::Short) => Some("short".to_string()),
+            _ => None,
+        }
+    }
+
+    fn expect_and_consume(&mut self, expected: TokenType) {
+        match &self.cur_token {
+            Some(t) if *t == expected => self.next_token(),
+            _ => panic!("Expected {:?}, found {:?}", expected, self.cur_token),
+        }
+    }
+
+    fn expect_token(&mut self, expected: TokenType) {
+        match &self.cur_token {
+            Some(t) if *t == expected => {},
+            _ => panic!("Expected {:?}, found {:?}", expected, self.cur_token),
+        }
+    }
+
+    fn consume_identifier(&mut self) -> Option<String> {
+        match &self.cur_token {
+            Some(TokenType::Identifier(id)) => {
+                let id_str = id.to_string();
+                self.next_token();
+                Some(id_str)
+            }
             _ => None,
         }
     }
@@ -268,9 +306,35 @@ impl<'a> Parser<'a> {
         parameters
     }
 
+    fn parse_struct_body(&mut self) -> (Option<String>, Vec<Instruction>, Option<String>) {
+        let id_str = match &self.cur_token {
+            Some(TokenType::Identifier(id)) => {
+                let id_str = id.to_string();
+                self.next_token();
+                Some(id_str)
+            },
+            Some(TokenType::OpenBrace) => None,
+            _ => panic!("Expected identifier or opening curly bracket")
+        };
+
+        self.expect_and_consume(TokenType::OpenBrace);
+        let body = self.parse_body();
+
+        let alias = match &self.cur_token {
+            Some(TokenType::Identifier(id)) => {
+                let id_str = id.to_string();
+                self.next_token();
+                Some(id_str)
+            },
+            Some(TokenType::Semicolon) => None,
+            _ => panic!("Expected alias in typedef, found {:?}", self.cur_token)
+        };
+
+        (id_str, body, alias)
+    }
+
     fn parse_body(&mut self) -> Vec<Instruction> {
         let mut instructions = Vec::new();
-        self.next_token();
         while let Some(token) = &self.cur_token {
             match token {
                 TokenType::CloseBrace => {
@@ -290,6 +354,25 @@ impl<'a> Parser<'a> {
         instructions
     }
 
+    fn get_type_string(&mut self) -> Option<String> {
+        match &self.cur_token {
+            Some(TokenType::Identifier(id)) => {
+                let id_str = id.to_string();
+                self.next_token();
+                Some(id_str)
+            },
+            Some(TokenType::Int) => {
+                self.next_token();
+                Some("int".to_string())
+            },
+            Some(TokenType::Char) => {
+                self.next_token();
+                Some("char".to_string())
+            },
+            _ => None,
+        }
+    }
+
     pub fn parse_declaration(&mut self) -> Declaration {
         match &self.cur_token {
             Some(TokenType::Int) | Some(TokenType::Long) |
@@ -304,10 +387,12 @@ impl<'a> Parser<'a> {
                             Some(TokenType::OpenParen) => {
                                 //Add function handling
                                 let parameters = self.parse_parameters();
+                                self.next_token();
                                 let body = self.parse_body();
                                 Declaration::FunctionDeclaration(number_type.unwrap(), str_id, parameters, body)
                             }
                             Some(TokenType::Semicolon) => {
+                                self.next_token();
                                 Declaration::VariableDeclaration(number_type.unwrap(), str_id,  None)
                                 //Init variable with no value
                             }
@@ -341,71 +426,36 @@ impl<'a> Parser<'a> {
                         match &self.cur_token {
                             Some(TokenType::Identifier(alias)) => {
                                 let alias_string = alias.to_string();
-                                TypeDefDeclaration(existing_string,TypeDefType::Basic(alias_string),
-                                )
+                                TypeDefDeclaration(Basic(existing_string, alias_string))
                             }
                             _ => panic!("Expected alias in typedef, found {:?}", self.cur_token)
                         }
                     }
-                    _ => panic!("Expected name in typedef, found {:?}", self.cur_token)
+                    Some(TokenType::Struct) => {
+                        self.next_token();
+                        let (existing, body, alias) = self.parse_struct_body();
+                        TypeDefDeclaration(Struct(existing, body, alias))
+                    }
+                    Some(TokenType::Int) => {
+                        let type_string = format!("{:?}", self.cur_token.as_ref().unwrap()).to_lowercase();
+                        self.next_token();
+                        match &self.cur_token {
+                            Some(TokenType::Identifier(alias)) => {
+                                let alias_str = alias.to_string();
+                                TypeDefDeclaration(Basic(type_string,alias_str))
+                            }
+                            _ => panic!("Expected alias in typedef, found {:?}", self.cur_token)
+                        }
+                    }
+                    _ => panic!("Typedef type not found, found {:?}", self.cur_token)
                 }
             }
             Some(TokenType::Struct) => {
                 self.next_token();
-                match &self.cur_token {
-                    //Declare struct, can be either anon, name or typedef
-                    Some(TokenType::Identifier(id)) => {
-                        let id_str = id.to_string();
-                        self.next_token();
-                        match &self.cur_token {
-                            //Standard struct def
-                            Some(TokenType::OpenBrace) => {
-                                //Get all declarations, should always be of Instruction::Declaration type
-                                let body: Vec<Instruction> = self.parse_body();
-                                self.next_token();
-                                match &self.cur_token {
-                                    Some(TokenType::CloseBrace) => {
-                                        self.next_token();
-                                        if let Some(TokenType::Identifier(id)) = &self.cur_token {
-                                            Declaration::StructDeclaration(Some(id_str), body, Some(id.to_string()))
-                                        } else {
-                                            Declaration::StructDeclaration(Some(id_str), body, None)
-                                        }
-                                    }
-                                    _ => panic!("Unexpected token in declaration: {:?}", self.cur_token)
-                                }
-                            }
-                            _ => panic!("Expected opening curly bracket ")
-                        }
-                    }
-                    //Anonymous struct
-                    Some(TokenType::OpenBrace) => {
-                        match &self.cur_token {
-                            Some(TokenType::OpenBrace) => {
-                                //Get all declarations, should always be of Instruction::Declaration type
-                                let body: Vec<Instruction> = self.parse_body();
-                                self.next_token();
-                                match &self.cur_token {
-                                    Some(TokenType::CloseBrace) => {
-                                        self.next_token();
-                                        if let Some(TokenType::Identifier(id)) = &self.cur_token {
-                                            Declaration::StructDeclaration(None, body, Some(id.to_string()))
-                                        } else {
-                                            Declaration::StructDeclaration(None, body, None)
-                                        }
-                                    }
-                                    _ => panic!("Unexpected token in declaration: {:?}", self.cur_token)
-                                }
-                            }
-                            _ => panic!("Expected opening curly bracket ")
-                        }
-                    }
-                    _ => panic!("Unexpected token in declaration: {:?}", self.cur_token)
-                }
-            }
-            _ => {
-                panic!("Unexpected token in declaration: {:?}", self.cur_token)
-            }
+                let (id_str, body, alias) = self.parse_struct_body();
+                StructDeclaration(id_str, body, alias)
+            },
+            _ => panic!("Unexpected token in declaration: {:?}", self.cur_token)
         }
     }
 
@@ -504,14 +554,107 @@ mod tests {
 
     #[test]
     fn test_typedef_alias() {
-        let lexer = Lexer::new("typedef name_str alias_str");
+        let lexer = Lexer::new("typedef name_str alias_str;");
         let mut parser = Parser::new(lexer);
         let declaration = parser.parse_declaration();
         assert_eq!(
             declaration,
-            Declaration::TypeDefDeclaration("name_str".to_string(), TypeDefType::Basic("alias_str".to_string()))
+            TypeDefDeclaration(Basic("name_str".to_string(), "alias_str".to_string()))
         );
     }
+
+    #[test]
+    fn test_parse_struct_declaration() {
+        let code = r#"
+        struct Test {
+            int field;
+        };
+        "#;
+
+        let lexer = Lexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let declaration = parser.parse_declaration();
+        let expected_declaration = Declaration::StructDeclaration(
+            Some("Test".to_string()),
+            vec![
+                Instruction::Declaration(Declaration::VariableDeclaration(
+                    "int".to_string(),
+                    "field".to_string(),
+                    None))
+            ],
+            None
+        );
+
+        assert_eq!(declaration, expected_declaration);
+    }
+
+    #[test]
+    fn test_parse_struct_alias() {
+        let code = r#"
+        struct Test {
+            int field;
+        } alias;
+        "#;
+
+        let lexer = Lexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let declaration = parser.parse_declaration();
+        let expected_declaration = Declaration::StructDeclaration(
+            Some("Test".to_string()),
+            vec![
+                Instruction::Declaration(Declaration::VariableDeclaration(
+                    "int".to_string(),
+                    "field".to_string(),
+                    None))
+            ],
+            Some("alias".to_string())
+        );
+
+        assert_eq!(declaration, expected_declaration);
+    }
+
+    #[test]
+    fn test_parse_typedef_basic_declaration() {
+        let code = r#"
+        typedef int INTEGER;
+        "#;
+
+        let lexer = Lexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let declaration = parser.parse_declaration();
+        let expected_declaration = TypeDefDeclaration(Basic("int".to_string(), "INTEGER".to_string())
+        );
+
+        assert_eq!(declaration, expected_declaration);
+    }
+
+    #[test]
+    fn test_parse_typedef_struct_declaration() {
+        let code = r#"
+        typedef struct Test {
+            int field;
+        } TestAlias;
+        "#;
+
+        let lexer = Lexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let declaration = parser.parse_declaration();
+        let expected_declaration = Declaration::TypeDefDeclaration(
+            TypeDefType::Struct(
+                Some("Test".to_string()),
+                vec![
+                    Instruction::Declaration(Declaration::VariableDeclaration(
+                        "int".to_string(),
+                        "field".to_string(),
+                        None))
+                ],
+                Some("TestAlias".to_string())
+            )
+        );
+
+        assert_eq!(declaration, expected_declaration);
+    }
+
     #[test]
     fn test_parse_program() {
         let input = r#"
@@ -582,4 +725,67 @@ mod tests {
             ]
         );
     }
+    #[test]
+    #[should_panic]
+    fn test_parse_invalid_typedef_struct_declaration() {
+        let code = r#"
+    typedef struct Test {
+        int field;
+    }  // missing alias
+    "#;
+
+        let lexer = Lexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let _ = parser.parse_declaration();
+    }
+    #[test]
+    #[should_panic]
+    fn test_parse_invalid_int() {
+        let lexer = Lexer::new("12a3"); // contains non-numeric character
+        let mut parser = Parser::new(lexer);
+        let _ = parser.parse_expr();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_invalid_variable() {
+        let lexer = Lexer::new("foo123");
+        let mut parser = Parser::new(lexer);
+        let _ = parser.parse_expr();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_invalid_function_call() {
+        let lexer = Lexer::new("bar(123, foo"); // missing closing parenthesis
+        let mut parser = Parser::new(lexer);
+        let _ = parser.parse_expr();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_invalid_struct_declaration() {
+        let code = r#"
+    struct Test {
+        int field
+    };  // missing semicolon after field declaration
+    "#;
+
+        let lexer = Lexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let _ = parser.parse_declaration();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_invalid_typedef_declaration() {
+        let code = r#"
+    typedef int  // missing alias
+    "#;
+
+        let lexer = Lexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let _ = parser.parse_declaration();
+    }
+
 }
