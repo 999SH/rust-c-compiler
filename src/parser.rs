@@ -6,6 +6,7 @@ use crate::parser::Declaration::TypeDefDeclaration;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Int(i64),
+    Assignment(Box<Expr>, Box<Expr>),
     BinOp(Box<Expr>, Op, Box<Expr>),
     Variable(String),
     FunctionCall(String, Vec<Expr>),
@@ -33,7 +34,7 @@ pub enum Declaration {
     VariableDeclaration(String, String, Option<Expr>),
     FunctionDeclaration(String, String, Vec<Parameter>, Vec<Instruction>),
     TypeDefDeclaration(String, TypeDefType),
-    StructDeclaration(String, Vec<StructVariable>)
+    StructDeclaration(Option<String>, Vec<Instruction>, Option<String>)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -108,6 +109,29 @@ impl<'a> Parser<'a> {
         program
     }
 
+    fn get_binary_op(&self) -> Option<Op> {
+        match &self.cur_token {
+            Some(TokenType::Plus) => Some(Op::Plus),
+            Some(TokenType::Minus) => Some(Op::Minus),
+            Some(TokenType::Star) => Some(Op::Multiplication),
+            Some(TokenType::Slash) => Some(Op::Division),
+            Some(TokenType::Ampersand) => Some(Op::BitAND),
+            Some(TokenType::Or) => Some(Op::BitOR),
+            Some(TokenType::Xor) => Some(Op::BitXOR),
+            _ => None,
+        }
+    }
+
+    fn get_number_type(&self) -> Option<String> {
+        match &self.cur_token {
+            Some(TokenType::Int) => Some("int".to_string()),
+            Some(TokenType::Double) => Some("double".to_string()),
+            Some(TokenType::Long) => Some("long".to_string()),
+            Some(TokenType::Short) => Some("short".to_string()),
+            _ => None,
+        }
+    }
+
     pub fn parse_expr(&mut self) -> Expr {
         let mut expr = self.parse_unary_expr();
 
@@ -116,7 +140,11 @@ impl<'a> Parser<'a> {
             let right = self.parse_unary_expr();
             expr = Expr::BinOp(Box::new(expr), op, Box::new(right))
         }
-
+        if let Some(TokenType::Equal) = self.cur_token{
+            self.next_token();
+            let right = self.parse_expr();
+            expr = Expr::Assignment(Box::new(expr), Box::new(right))
+        }
         expr
     }
     fn parse_unary_expr(&mut self) -> Expr {
@@ -190,29 +218,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn get_binary_op(&self) -> Option<Op> {
-        match &self.cur_token {
-            Some(TokenType::Plus) => Some(Op::Plus),
-            Some(TokenType::Minus) => Some(Op::Minus),
-            Some(TokenType::Star) => Some(Op::Multiplication),
-            Some(TokenType::Slash) => Some(Op::Division),
-            Some(TokenType::Ampersand) => Some(Op::BitAND),
-            Some(TokenType::Or) => Some(Op::BitOR),
-            Some(TokenType::Xor) => Some(Op::BitXOR),
-            _ => None,
-        }
-    }
-
-    fn get_number_type(&self) -> Option<String> {
-        match &self.cur_token {
-            Some(TokenType::Int) => Some("int".to_string()),
-            Some(TokenType::Double) => Some("double".to_string()),
-            Some(TokenType::Long) => Some("long".to_string()),
-            Some(TokenType::Short) => Some("short".to_string()),
-            _ => None,
-        }
-    }
-
     fn parse_args(&mut self) -> Vec<Expr> {
         let mut args = Vec::new();
 
@@ -263,7 +268,7 @@ impl<'a> Parser<'a> {
         parameters
     }
 
-    fn parse_function_body(&mut self) -> Vec<Instruction> {
+    fn parse_body(&mut self) -> Vec<Instruction> {
         let mut instructions = Vec::new();
         self.next_token();
         while let Some(token) = &self.cur_token {
@@ -272,13 +277,13 @@ impl<'a> Parser<'a> {
                     self.next_token();
                     break;
                 }
+                TokenType::Return | TokenType::Identifier(..) => {
+                    let statement = self.parse_statement();
+                    instructions.push(Instruction::Statement(statement));
+                }
                 _ => {
-                        if let Some(declaration) = self.parse_declaration() {
-                            instructions.push(Instruction::Declaration(declaration));
-                        } else {
-                            let statement = self.parse_statement();
-                            instructions.push(Instruction::Statement(statement));
-                        }
+                    let declaration = self.parse_declaration() ;
+                    instructions.push(Instruction::Declaration(declaration));
                 }
             }
         }
@@ -299,7 +304,7 @@ impl<'a> Parser<'a> {
                             Some(TokenType::OpenParen) => {
                                 //Add function handling
                                 let parameters = self.parse_parameters();
-                                let body = self.parse_function_body();
+                                let body = self.parse_body();
                                 Declaration::FunctionDeclaration(number_type.unwrap(), str_id, parameters, body)
                             }
                             Some(TokenType::Semicolon) => {
@@ -336,13 +341,66 @@ impl<'a> Parser<'a> {
                         match &self.cur_token {
                             Some(TokenType::Identifier(alias)) => {
                                 let alias_string = alias.to_string();
-                                Declaration::TypeDefDeclaration(existing_string,TypeDefType::Basic("alias".to_string()),
+                                TypeDefDeclaration(existing_string,TypeDefType::Basic(alias_string),
                                 )
                             }
                             _ => panic!("Expected alias in typedef, found {:?}", self.cur_token)
                         }
                     }
                     _ => panic!("Expected name in typedef, found {:?}", self.cur_token)
+                }
+            }
+            Some(TokenType::Struct) => {
+                self.next_token();
+                match &self.cur_token {
+                    //Declare struct, can be either anon, name or typedef
+                    Some(TokenType::Identifier(id)) => {
+                        let id_str = id.to_string();
+                        self.next_token();
+                        match &self.cur_token {
+                            //Standard struct def
+                            Some(TokenType::OpenBrace) => {
+                                //Get all declarations, should always be of Instruction::Declaration type
+                                let body: Vec<Instruction> = self.parse_body();
+                                self.next_token();
+                                match &self.cur_token {
+                                    Some(TokenType::CloseBrace) => {
+                                        self.next_token();
+                                        if let Some(TokenType::Identifier(id)) = &self.cur_token {
+                                            Declaration::StructDeclaration(Some(id_str), body, Some(id.to_string()))
+                                        } else {
+                                            Declaration::StructDeclaration(Some(id_str), body, None)
+                                        }
+                                    }
+                                    _ => panic!("Unexpected token in declaration: {:?}", self.cur_token)
+                                }
+                            }
+                            _ => panic!("Expected opening curly bracket ")
+                        }
+                    }
+                    //Anonymous struct
+                    Some(TokenType::OpenBrace) => {
+                        match &self.cur_token {
+                            Some(TokenType::OpenBrace) => {
+                                //Get all declarations, should always be of Instruction::Declaration type
+                                let body: Vec<Instruction> = self.parse_body();
+                                self.next_token();
+                                match &self.cur_token {
+                                    Some(TokenType::CloseBrace) => {
+                                        self.next_token();
+                                        if let Some(TokenType::Identifier(id)) = &self.cur_token {
+                                            Declaration::StructDeclaration(None, body, Some(id.to_string()))
+                                        } else {
+                                            Declaration::StructDeclaration(None, body, None)
+                                        }
+                                    }
+                                    _ => panic!("Unexpected token in declaration: {:?}", self.cur_token)
+                                }
+                            }
+                            _ => panic!("Expected opening curly bracket ")
+                        }
+                    }
+                    _ => panic!("Unexpected token in declaration: {:?}", self.cur_token)
                 }
             }
             _ => {
@@ -374,6 +432,9 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::parser::Declaration::{FunctionDeclaration, VariableDeclaration};
+    use crate::parser::Expr::BinOp;
+    use crate::parser::Statement::Return;
     use super::*;
 
     #[test]
@@ -406,6 +467,20 @@ mod tests {
         );
     }
     #[test]
+    fn test_reassign_variable() {
+        let lexer = Lexer::new("c = c + 5");
+        let mut parser = Parser::new(lexer);
+        let expr = parser.parse_expr();
+        assert_eq!(
+            expr,
+            Expr::Assignment(Box::new(Expr::Variable("c".to_string())),
+                             Box::new(BinOp(
+                                 Box::new(Expr::Variable("c".to_string())),
+                                 Op::Plus,
+                                 Box::new(Expr::Int(5)))))
+        );
+    }
+    #[test]
     fn test_parse_unary_operation() {
         let lexer = Lexer::new("-foo");
         let mut parser = Parser::new(lexer);
@@ -431,10 +506,10 @@ mod tests {
     fn test_typedef_alias() {
         let lexer = Lexer::new("typedef name_str alias_str");
         let mut parser = Parser::new(lexer);
-        let statement = parser.parse_statement();
+        let declaration = parser.parse_declaration();
         assert_eq!(
-            statement,
-            Statement::TypeDef("name_str".to_string(), "alias_str".to_string())
+            declaration,
+            Declaration::TypeDefDeclaration("name_str".to_string(), TypeDefType::Basic("alias_str".to_string()))
         );
     }
     #[test]
@@ -456,9 +531,9 @@ mod tests {
         let program = parser.parse();
 
         assert_eq!(
-            program.declarations,
+            program.contains,
             vec![
-                Declaration::FunctionDeclaration(
+                Instruction::Declaration(FunctionDeclaration(
                     "int".to_string(),
                     "adder".to_string(),
                     vec![
@@ -472,7 +547,7 @@ mod tests {
                         }
                     ],
                     vec![
-                        Declaration::VariableDeclaration(
+                        Instruction::Declaration(VariableDeclaration(
                             "int".to_string(),
                             "c".to_string(),
                             Some(Expr::BinOp(
@@ -480,30 +555,30 @@ mod tests {
                                 Op::Plus,
                                 Box::new(Expr::Variable("b".to_string()))
                             ))
-                        ),
-                        Statement::Return(Expr::BinOp(
+                        )),
+                        Instruction::Statement(Return(Expr::BinOp(
                             Box::new(Expr::Variable("c".to_string())),
                             Op::Plus,
                             Box::new(Expr::Int(5))
-                        ))
+                        )))
                     ]
-                ),
-                Declaration::FunctionDeclaration(
+                )),
+                Instruction::Declaration(FunctionDeclaration(
                     "int".to_string(),
                     "main".to_string(),
                     vec![],
                     vec![
-                        Declaration::VariableDeclaration(
+                        Instruction::Declaration(VariableDeclaration(
                             "int".to_string(),
                             "d".to_string(),
                             Some(Expr::FunctionCall(
                                 "adder".to_string(),
                                 vec![Expr::Int(3), Expr::Int(4)]
                             ))
-                        ),
-                        Statement::Return(Expr::Int(0))
+                        )),
+                        Instruction::Statement(Return(Expr::Int(0)))
                     ]
-                ),
+                )),
             ]
         );
     }

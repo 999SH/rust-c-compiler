@@ -1,7 +1,6 @@
 mod generator;
 mod lexer;
 mod parser;
-mod preprocessor;
 
 use crate::generator::CodeGenerator;
 use crate::lexer::{Lexer, TokenType};
