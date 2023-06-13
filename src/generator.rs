@@ -125,17 +125,17 @@ impl CodeGenerator {
             Expr::Int(i) => self.code += &format!("mov rax, {}\n", i),
             Expr::Variable(var) => {
                 if let Some(offset) = self.symbol_table.get(var) {
-                    self.code += &format!("mov rax, [{}]\n", offset);
+                    self.code += &format!("mov rax, [rbp{}]\n", offset);
                 } else {
                     let offset = -((self.symbol_table.len() + 1) as isize) * 8;
                     self.symbol_table.insert(var.clone(), offset);
-                    self.code += &format!("mov rax, [{}]\n", offset);
+                    self.code += &format!("mov rax, [rbp{}]\n", offset);
                 }
             }
             Expr::FunctionCall(name, args) => {
                 for (i, arg) in args.iter().enumerate() {
                     self.visit_expr(arg);
-                    self.code += &format!("mov [rsp-{}], rax\n", (i + 1) * 8);
+                    self.code += &format!("mov [rsp{}], rax\n", (i + 1) * 8);
                 }
                 self.code += &format!("call {}\n", name);
             }
@@ -252,7 +252,7 @@ push rbp
 mov rbp, rsp
 mov [rbp-8], rdi
 mov [rbp-16], rsi
-mov rax, [-24]
+mov rax, [rbp-24]
 push rax
 mov rax, 5
 pop rcx

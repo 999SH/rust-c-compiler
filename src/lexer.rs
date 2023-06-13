@@ -295,6 +295,9 @@ impl<'a> Lexer<'a> {
         let start: usize = self.pos - 1;
         while self.peek_char().is_ascii_digit() || self.peek_char() == '_' {
             self.read_char();
+            if self.peek_char().is_ascii_alphabetic() {
+                panic!("Invalid integer!")
+            }
         }
         self.input[start..self.pos]
             .replace("_", "") // remove underscores
