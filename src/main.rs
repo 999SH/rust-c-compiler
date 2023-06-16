@@ -41,7 +41,7 @@ fn main() {
         let mut code_generator = CodeGenerator::new();
         let assembly = code_generator.generate(&program);
 
-        let output_file_name = "testcode/output.s";
+        let output_file_name = "testcode/output.asm";
         fs::write(output_file_name, assembly).expect("Unable to write to file");
         //println!("{:?}", program);
         //print_program(&program);

@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fmt::format;
+use std::ops::Deref;
 
 #[allow(unused_imports)]
 use crate::parser::{Expr, Op, Parameter, Program};
@@ -8,6 +10,7 @@ use crate::parser::Declaration::FunctionDeclaration;
 pub struct CodeGenerator {
     code: String,
     symbol_table: HashMap<String, isize>,
+    if_count: i32
 }
 
 impl CodeGenerator {
@@ -15,12 +18,12 @@ impl CodeGenerator {
         Self {
             code: String::new(),
             symbol_table: HashMap::new(),
+            if_count: 0,
         }
     }
     pub fn generate(&mut self, program: &Program) -> &str {
-        self.code += ".intel_syntax noprefix\n";
-        self.code += ".global main\n";
-        self.code += "main:\n";
+        self.code += "global _start\n";
+        self.code += "_start:\n";
 
         if let Some(Instruction::Declaration(FunctionDeclaration(_, name, _, _))) = program.contains.first() {
             self.code += &format!("call {}_entry\n", name)
@@ -62,8 +65,44 @@ impl CodeGenerator {
         self.code += &format!("call {}\n", name)
     }
 
+
+
+    fn visit_if_statement(&mut self, condition: Box<Expr>, body: Vec<Instruction>, else_body: Option<Box<Instruction>>){
+        let else_label = format!("Lelse{}", self.if_count);
+        let end_label = format!("Lend{}", self.if_count);
+        self.if_count += 1;
+
+        self.visit_expr(&condition);
+        self.code += "cmp eax, 0\n";
+        self.code += &format!("je {}\n", else_label);
+
+        for instruction in body {
+            match instruction {
+                Instruction::Declaration(declaration) => {
+                    self.visit_declaration(&declaration)
+                },
+                Instruction::Statement(statement) => {
+                    self.visit_statement(&statement)
+                },
+            }
+        }
+
+        self.code += &format!("jmp {}\n", end_label);
+        self.code += &format!("{}:\n", else_label);
+
+        if let Some(state) = else_body {
+            match *state {
+                Instruction::Statement(unboxed) => self.visit_statement(&unboxed),
+                _ => {}
+            }
+        };
+    }
+
     fn visit_statement(&mut self, statement: &Statement) {
         match statement {
+            Statement::IfStatement(condition, body, else_body) => {
+
+            }
             Statement::Return(expr) => {
                 self.visit_expr(expr);
             }
@@ -240,9 +279,8 @@ mod tests {
         let asm = codegen.generate(&program);
         assert_eq!(
             asm,
-            ".intel_syntax noprefix
-.global main
-main:
+"global _start
+_start:
 call adder_entry
 mov eax, 0x60
 xor edi, edi
@@ -284,7 +322,7 @@ ret
         let asm = generator.generate(&program);
         assert_eq!(
             asm,
-            ".intel_syntax noprefix\n.global main\nmain:\ncall test_entry\nmov eax, 0x60\nxor edi, edi\nsyscall\n\
+            "global _start\n_start:\ncall test_entry\nmov eax, 0x60\nxor edi, edi\nsyscall\n\
             test_entry:\npush rbp\nmov rbp, rsp\nmov rax, 42\nmov rsp, rbp\npop rbp\nret\n"
         );
     }

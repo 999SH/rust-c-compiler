@@ -1,9 +1,7 @@
-use std::env::var;
 use crate::lexer::TokenType;
 use crate::parser::Declaration::{StructDeclaration, TypeDefDeclaration};
 use crate::parser::TypeDefType::{Basic, Struct};
 use crate::Lexer;
-use std::fmt::format;
 
 macro_rules! expect_token {
     ($self:expr, $expected_token:expr) => {
@@ -37,6 +35,8 @@ pub enum Expr {
 pub enum Statement {
     Expression(Expr),
     Return(Expr),
+    IfStatement(Box<Expr>, Vec<Instruction>, Option<Box<Instruction>>),
+    Else(Vec<Instruction>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -70,6 +70,12 @@ pub enum Op {
     BitOR,
     BitAND,
     BitXOR,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    AndAnd,
+    OrOr,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -121,8 +127,7 @@ impl<'a> Parser<'a> {
                 | TokenType::Char
                 | TokenType::Struct
                 | TokenType::Unsigned
-                | TokenType::Void
-                => {
+                | TokenType::Void => {
                     let declaration = self.parse_declaration();
                     program.contains.push(Instruction::Declaration(declaration))
                 }
@@ -144,6 +149,12 @@ impl<'a> Parser<'a> {
             Some(TokenType::Ampersand) => Some(Op::BitAND),
             Some(TokenType::Or) => Some(Op::BitOR),
             Some(TokenType::Xor) => Some(Op::BitXOR),
+            Some(TokenType::AndAnd) => Some(Op::AndAnd),
+            Some(TokenType::OrOr) => Some(Op::OrOr),
+            Some(TokenType::Less) => Some(Op::Less),
+            Some(TokenType::LessEqual) => Some(Op::LessEqual),
+            Some(TokenType::Greater) => Some(Op::Greater),
+            Some(TokenType::GreaterEqual) => Some(Op::GreaterEqual),
             _ => None,
         }
     }
@@ -210,8 +221,8 @@ impl<'a> Parser<'a> {
                 let var_id = id.to_string();
                 self.next_token();
                 match &self.cur_token {
-                    Some (TokenType::Identifier(_)) => {
-                        panic!(" {} is an invalid type!",var_id)
+                    Some(TokenType::Identifier(_)) => {
+                        panic!(" {} is an invalid type!", var_id)
                     }
                     Some(TokenType::OpenParen) => {
                         self.next_token();
@@ -335,12 +346,12 @@ impl<'a> Parser<'a> {
         let mut instructions = Vec::new();
         while let Some(token) = &self.cur_token {
             match token {
-                TokenType::EOF => {break}
+                TokenType::EOF => break,
                 TokenType::CloseBrace => {
                     self.next_token();
                     break;
                 }
-                TokenType::Return | TokenType::Identifier(..) => {
+                TokenType::Return | TokenType::Identifier(..) | TokenType::If | TokenType::IntConst(..) => {
                     let statement = self.parse_statement();
                     instructions.push(Instruction::Statement(statement));
                 }
@@ -429,7 +440,7 @@ impl<'a> Parser<'a> {
                             _ => panic!("Expected semicolon after variable declaration"),
                         }
                     }
-                    _ => panic!("Expected semicolon after variable declaration"),
+                    _ => panic!("Expected Identifier after variable declaration"),
                 }
             }
             Some(TokenType::Typedef) => {
@@ -445,7 +456,9 @@ impl<'a> Parser<'a> {
                                     let alias_string = alias.to_string();
                                     TypeDefDeclaration(Basic(cloned_str, alias_string))
                                 }
-                                _ => panic!("Expected alias in typedef, found {:?}", self.cur_token),
+                                _ => {
+                                    panic!("Expected alias in typedef, found {:?}", self.cur_token)
+                                }
                             }
                         } else {
                             let type_string = format!("{}", specifiers);
@@ -485,8 +498,41 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_if_statement(&mut self) -> Statement {
+        self.next_token(); // consume the `if` keyword
+        let condition = Box::new(self.parse_expr());
+
+        match &self.cur_token {
+            Some(TokenType::OpenBrace) => {
+                self.next_token();
+                let if_body = self.parse_body();
+
+                let else_body = match &self.cur_token {
+                    Some(TokenType::Else) => {
+                        self.next_token();
+                        match &self.cur_token {
+                            Some(TokenType::If) => {
+                                Some(Box::new(Instruction::Statement(self.parse_if_statement())))
+                            }
+                            _ => {
+                                expect_token!(self, TokenType::OpenBrace);
+                                Some(Box::new(Instruction::Statement(Statement::Else(
+                                    self.parse_body(),
+                                ))))
+                            },
+                        }
+                    }
+                    _ => None,
+                };
+                Statement::IfStatement(condition, if_body, else_body)
+            }
+            _ => panic!("Expected opening curly brackets after if statement"),
+        }
+    }
+
     pub fn parse_statement(&mut self) -> Statement {
         match &self.cur_token {
+            Some(TokenType::If) => self.parse_if_statement(),
             Some(TokenType::Return) => {
                 self.next_token();
                 let expr = self.parse_expr();
@@ -510,10 +556,11 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::read;
     use super::*;
     use crate::parser::Declaration::{FunctionDeclaration, VariableDeclaration};
-    use crate::parser::Expr::BinOp;
-    use crate::parser::Statement::Return;
+    use crate::parser::Expr::{BinOp, Int, Variable};
+    use crate::parser::Statement::{Else, IfStatement, Return};
 
     #[test]
     fn test_parse_int() {
@@ -851,5 +898,77 @@ mod tests {
         let lexer = Lexer::new(code);
         let mut parser = Parser::new(lexer);
         parser.parse_declaration();
+    }
+    #[test]
+    fn test_parse_if_statement() {
+        let input = r#"
+        int main() {
+            if (x < 5) {
+                return 1;
+            } else if (x > 10) {
+                return 2;
+            } else {
+                return 0;
+            }
+        }
+    "#;
+
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse();
+
+        let contains = vec![Instruction::Declaration(FunctionDeclaration(
+                "int".to_string(),
+                "main".to_string(),
+                vec![],
+                vec![Instruction::Statement(
+                    IfStatement(
+                        Box::new(
+                            BinOp(
+                                Box::new(Variable("x".to_string())),
+                                Op::Less,
+                                Box::new(Int(5)))),
+
+                        vec![Instruction::Statement(Return(Int(1)))],
+
+                        Some(Box::new(Instruction::Statement(IfStatement(
+                            Box::new(BinOp(
+                                Box::new(Variable("x".to_string())),
+                                Op::Greater,
+                                Box::new(Int(10)))),
+
+                            vec![Instruction::Statement(Return(Int(2)))],
+
+                            Some(Box::new(Instruction::Statement(Statement::Else(vec![Instruction::Statement(Return(Int(0)))]))))
+                        ),
+                    )))
+                    )
+                )]
+            ))];
+
+        assert_eq!(program.contains, contains);
+
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_invalid_if_statement() {
+        let input = r#"
+        int main() {
+            if (x < 5) {
+                return 1;
+            else if (x > 10) { // Missing closing '}' for the first if statement
+                return 2;
+            } else {
+                return 0;
+            }
+        }
+    "#;
+
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+
+        let _ = parser.parse();
     }
 }

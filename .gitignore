@@ -3,3 +3,5 @@ Cargo.lock
 Cargo.lock
 testcode/output.s
 *.idea*
+testcode/output.asm
+testcode/executable
