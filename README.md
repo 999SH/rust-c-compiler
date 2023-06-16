@@ -1,6 +1,6 @@
 # rust-c-compiler
 
-My C compiler, built in rust. Compiles to x84-64 Assembly.
+My C compiler, built in rust. Compiles to x86-64 Nasm Assembly.
 
 Currently supports: 
 
