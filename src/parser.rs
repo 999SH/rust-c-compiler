@@ -30,15 +30,27 @@ pub enum Expr {
     Dereference(Box<Expr>),
     Address(Box<Expr>),
 }
-
+/*
+Statements: Expresion, Return: Self explanatory
+If statement, First box is conditions, Vec contains body of the statement,
+the optional Box contains an instruction which either is either an (else if) or else statement
+While loop: First box contains conditional, Vec contains body
+ */
 #[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
     Expression(Expr),
     Return(Expr),
     IfStatement(Box<Expr>, Vec<Instruction>, Option<Box<Instruction>>),
     Else(Vec<Instruction>),
+    WhileLoop(Box<Expr>, Vec<Instruction>)
 }
-
+/*
+Declarations:
+Variable: Type, Name and optional assignment. Int x; or int x = 5; are both valid
+Function: Type, Name, Parameters and body
+Typedef, refers to typedeftype enum where all of the typedef info is stored
+Struct: Optional name, Body/initializations, Optional alias
+ */
 #[derive(Debug, PartialEq, Eq)]
 pub enum Declaration {
     VariableDeclaration(String, String, Option<Expr>),
@@ -46,21 +58,30 @@ pub enum Declaration {
     TypeDefDeclaration(TypeDefType),
     StructDeclaration(Option<String>, Vec<Instruction>, Option<String>),
 }
-
+/*
+Possibly unused code
+ */
 #[derive(Debug, PartialEq, Eq)]
 pub struct StructStruct {
     pub name: Option<String>,
     pub body: Vec<Instruction>,
     pub alias: Option<String>,
 }
-
+/*
+Typedef types,
+Normal: Name, alias
+Struct, Same as above
+Union TODO
+ */
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeDefType {
     Basic(String, String),
     Struct(Option<String>, Vec<Instruction>, Option<String>),
     Union(String),
 }
-
+/*
+Bitwise operators are single characters such as &, where as && is AndAnd (Logical and)
+ */
 #[derive(Debug, PartialEq, Eq)]
 pub enum Op {
     Plus,
@@ -76,6 +97,7 @@ pub enum Op {
     GreaterEqual,
     AndAnd,
     OrOr,
+    Assign,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -155,6 +177,7 @@ impl<'a> Parser<'a> {
             Some(TokenType::LessEqual) => Some(Op::LessEqual),
             Some(TokenType::Greater) => Some(Op::Greater),
             Some(TokenType::GreaterEqual) => Some(Op::GreaterEqual),
+            Some(TokenType::Equal) => Some(Op::Assign),
             _ => None,
         }
     }
@@ -274,20 +297,43 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_expr(&mut self) -> Expr {
-        let mut expr = self.parse_unary_expr();
+    fn get_precedence(&self) -> i32 {
+        match &self.cur_token {
+            Some(TokenType::Equal) => 0,
+            Some(TokenType::Minus) => 1,
+            Some(TokenType::Plus) => 2,
+            Some(TokenType::Slash) => 3,
+            Some(TokenType::Star) => 4,
+            Some(TokenType::Xor) => 5,
+            Some(TokenType::OpenParen) => 7,
+            _ => 0,
+        }
+    }
+
+    fn parse_binop(&mut self, unary: Expr, min_precedence: i32) -> Expr {
+        //let mut expr = self.parse_unary_expr();
+        let mut expr = unary;
 
         while let Some(op) = self.get_binary_op() {
+            let op_precedence = self.get_precedence();
+
+            if op_precedence < min_precedence {
+                break
+            }
             self.next_token();
             let right = self.parse_unary_expr();
+            let right = self.parse_binop(right,op_precedence + 1);
+
             expr = Expr::BinOp(Box::new(expr), op, Box::new(right))
         }
-        if let Some(TokenType::Equal) = self.cur_token {
-            self.next_token();
-            let right = self.parse_expr();
-            expr = Expr::Assignment(Box::new(expr), Box::new(right))
-        }
         expr
+    }
+    /*
+    Parse expression, check if binary operation
+     */
+    pub fn parse_expr(&mut self) -> Expr {
+        let mut expr = self.parse_unary_expr();
+        self.parse_binop(expr, 0)
     }
 
     fn parse_args(&mut self) -> Vec<Expr> {
@@ -348,10 +394,13 @@ impl<'a> Parser<'a> {
             match token {
                 TokenType::EOF => break,
                 TokenType::CloseBrace => {
-                    self.next_token();
                     break;
                 }
-                TokenType::Return | TokenType::Identifier(..) | TokenType::If | TokenType::IntConst(..) => {
+                TokenType::Return |
+                TokenType::Identifier(..) |
+                TokenType::If |
+                TokenType::IntConst(..) |
+                TokenType::While => {
                     let statement = self.parse_statement();
                     instructions.push(Instruction::Statement(statement));
                 }
@@ -361,6 +410,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        expect_token!(self, TokenType::CloseBrace);
         instructions
     }
 
@@ -530,9 +580,18 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_while_loop(&mut self) -> Statement {
+        self.next_token();
+        let condition = Box::new(self.parse_expr());
+        expect_token!(self, TokenType::OpenBrace);
+        let loop_body = self.parse_body();
+        Statement::WhileLoop(condition,loop_body)
+    }
+
     pub fn parse_statement(&mut self) -> Statement {
         match &self.cur_token {
             Some(TokenType::If) => self.parse_if_statement(),
+            Some(TokenType::While) => self.parse_while_loop(),
             Some(TokenType::Return) => {
                 self.next_token();
                 let expr = self.parse_expr();
@@ -560,7 +619,7 @@ mod tests {
     use super::*;
     use crate::parser::Declaration::{FunctionDeclaration, VariableDeclaration};
     use crate::parser::Expr::{BinOp, Int, Variable};
-    use crate::parser::Statement::{Else, IfStatement, Return};
+    use crate::parser::Statement::{Else, Expression, IfStatement, Return, WhileLoop};
 
     #[test]
     fn test_parse_int() {
@@ -598,8 +657,9 @@ mod tests {
         let expr = parser.parse_expr();
         assert_eq!(
             expr,
-            Expr::Assignment(
+            Expr::BinOp(
                 Box::new(Expr::Variable("c".to_string())),
+                Op::Assign,
                 Box::new(BinOp(
                     Box::new(Expr::Variable("c".to_string())),
                     Op::Plus,
@@ -828,6 +888,31 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_assignment() {
+        let code = "x = x + 5;";
+
+        let lexer = Lexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let assignment = parser.parse();
+
+        let assignmentvec = vec![Instruction::Statement(Expression(
+            BinOp(
+                Box::new(Variable("x".to_string())),
+                Op::Assign,
+                Box::new(
+                    BinOp(
+                        Box::new(Variable("x".to_string())),
+                        Op::Plus,
+                        Box::new(Int(5))
+                    )
+                )
+            )
+        )
+        )];
+        assert_eq!(assignment.contains, assignmentvec);
+    }
+
+    #[test]
     #[should_panic]
     fn test_parse_invalid_function_call() {
         let lexer = Lexer::new("bar(123, foo"); // missing closing parenthesis
@@ -963,6 +1048,79 @@ mod tests {
             } else {
                 return 0;
             }
+        }
+    "#;
+
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+
+        let _ = parser.parse();
+    }
+
+    #[test]
+    fn test_parse_while_statement() {
+        let input = r#"
+    int main() {
+        int x = 0;
+        while (x < 10) {
+            x = x + 1;
+        }
+    }
+    "#;
+
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse();
+
+        let contains = vec![Instruction::Declaration(FunctionDeclaration(
+            "int".to_string(),
+            "main".to_string(),
+            vec![],
+            vec![
+                Instruction::Declaration(VariableDeclaration(
+                    "int".to_string(),
+                    "x".to_string(),
+                    Some(Int(0))
+                )),
+                Instruction::Statement(
+                    WhileLoop(
+                        Box::new(
+                            BinOp(
+                                Box::new(Variable("x".to_string())),
+                                Op::Less,
+                                Box::new(Int(10))
+                            )
+                        ),
+                        vec![Instruction::Statement(Expression(
+                            BinOp(
+                                Box::new(Variable("x".to_string())),
+                                Op::Assign,
+                                Box::new(
+                                    BinOp(
+                                        Box::new(Variable("x".to_string())),
+                                        Op::Plus,
+                                        Box::new(Int(1))
+                                    )
+                                )
+                            )
+                        ))]
+                    )
+                )
+            ]
+        ))];
+
+        assert_eq!(program.contains, contains);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_invalid_while_statement() {
+        let input = r#"
+    int main() {
+        int x = 0;
+        while (x < 10) {
+            x = x + 1;
         }
     "#;
 
