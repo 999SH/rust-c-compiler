@@ -1,7 +1,5 @@
 /target
 Cargo.lock
 Cargo.lock
-testcode/output.s
+testcode/*
 *.idea*
-testcode/output.asm
-testcode/executable
